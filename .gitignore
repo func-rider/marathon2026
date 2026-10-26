@@ -16,6 +16,11 @@ node_modules/
 .env
 .env.local
 
+# Python virtual environments
+.venv/
+venv/
+syndicate_venv*/
+
 # Terraform
 **/.terraform/
 *.tfstate
