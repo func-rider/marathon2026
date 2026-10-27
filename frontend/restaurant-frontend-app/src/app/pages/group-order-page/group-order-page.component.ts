@@ -14,7 +14,9 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { ParticipantCardComponent } from '@app/components/group-orders/participant-card/participant-card.component';
 import { GroupOrderPreview } from '@app/models/group-orders/group-order-preview.model';
+import { Participant } from '@app/models/group-orders/participant.model';
 import {
+  GroupSessionsSnapshot,
   GroupOrderSubmissionResult,
   GroupOrdersService,
 } from '@app/services/group-orders/group-orders.service';
@@ -32,6 +34,7 @@ export class GroupOrderPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly groupOrdersService = inject(GroupOrdersService);
   private submitDialogElement: HTMLDialogElement | null = null;
+  private removeDialogElement: HTMLDialogElement | null = null;
 
   @ViewChild('submitDialog')
   set submitDialog(ref: ElementRef<HTMLDialogElement> | undefined) {
@@ -45,6 +48,14 @@ export class GroupOrderPageComponent implements OnInit {
     }
   }
 
+  @ViewChild('removeDialog')
+  set removeDialog(ref: ElementRef<HTMLDialogElement> | undefined) {
+    this.removeDialogElement = ref?.nativeElement ?? null;
+    if (this.removeDialogElement && this.pendingRemoval() && !this.removeDialogElement.open) {
+      this.removeDialogElement.showModal();
+    }
+  }
+
   readonly groupOrder = signal<GroupOrderPreview | null>(null);
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -52,6 +63,10 @@ export class GroupOrderPageComponent implements OnInit {
   readonly isSubmitting = signal(false);
   readonly submitError = signal<string | null>(null);
   readonly submitSuccess = signal(false);
+  readonly pendingRemoval = signal<Participant | null>(null);
+  readonly isRemoving = signal(false);
+  readonly removeError = signal<string | null>(null);
+  readonly removeSuccess = signal<string | null>(null);
   readonly participants = computed(() => this.groupOrder()?.sessions.participants ?? []);
   readonly submittedGuestCount = computed(
     () =>
@@ -151,6 +166,53 @@ export class GroupOrderPageComponent implements OnInit {
     this.cancelSubmitConfirmation();
   }
 
+  openRemoveConfirmation(participant: Participant): void {
+    if (participant.type !== 'Guest' || this.isRemoving()) {
+      return;
+    }
+    this.removeError.set(null);
+    this.removeSuccess.set(null);
+    this.pendingRemoval.set(participant);
+  }
+
+  cancelRemoveConfirmation(): void {
+    if (this.isRemoving()) {
+      return;
+    }
+    this.closeRemoveConfirmation();
+    this.removeError.set(null);
+  }
+
+  handleRemoveDialogCancel(event: Event): void {
+    event.preventDefault();
+    this.cancelRemoveConfirmation();
+  }
+
+  confirmGuestRemoval(): void {
+    const participant = this.pendingRemoval();
+    const groupOrder = this.groupOrder();
+    if (!participant || !groupOrder || participant.type !== 'Guest' || this.isRemoving()) {
+      return;
+    }
+
+    this.isRemoving.set(true);
+    this.removeError.set(null);
+    this.groupOrdersService
+      .deleteGuestSession$(groupOrder.invite.GroupReservationId, participant.id)
+      .subscribe({
+        next: (snapshot) => {
+          this.groupOrder.set(this.withRemovedGuest(groupOrder, snapshot));
+          this.removeSuccess.set(`${participant.name} was removed from the group.`);
+          this.closeRemoveConfirmation();
+        },
+        error: (error: unknown) => {
+          this.removeError.set(this.toRemoveErrorMessage(error));
+          this.isRemoving.set(false);
+        },
+        complete: () => this.isRemoving.set(false),
+      });
+  }
+
   confirmGroupOrderSubmission(): void {
     const groupOrder = this.groupOrder();
     const reservationId = this.route.snapshot.paramMap.get('reservationId');
@@ -182,6 +244,36 @@ export class GroupOrderPageComponent implements OnInit {
       this.submitDialogElement.close();
     }
     this.isSubmitConfirmationOpen.set(false);
+  }
+
+  private closeRemoveConfirmation(): void {
+    if (this.removeDialogElement?.open) {
+      this.removeDialogElement.close();
+    }
+    this.pendingRemoval.set(null);
+  }
+
+  private withRemovedGuest(
+    groupOrder: GroupOrderPreview,
+    snapshot: GroupSessionsSnapshot
+  ): GroupOrderPreview {
+    const owner = groupOrder.sessions.participants.find(
+      (participant) => participant.type === 'Owner'
+    );
+    const ownerTotal = owner?.total ?? 0;
+    const participants = [
+      ...(owner ? [owner] : []),
+      ...snapshot.participants.filter((participant) => participant.type === 'Guest'),
+    ];
+
+    return {
+      ...groupOrder,
+      sessions: {
+        participants,
+        total: groupOrder.status === 'Submitted' ? ownerTotal : ownerTotal + snapshot.total,
+      },
+      currentParticipants: Math.max(1, groupOrder.currentParticipants - 1),
+    };
   }
 
   private withSubmittedOrder(
@@ -254,6 +346,32 @@ export class GroupOrderPageComponent implements OnInit {
       }
     }
     return 'Unable to submit this group pre-order. Please try again.';
+  }
+
+  private toRemoveErrorMessage(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const apiError = error.error as {
+        errorCode?: string;
+        message?: string;
+        error?: string;
+      } | null;
+      if (error.status === 400) {
+        return apiError?.message ?? 'This guest session does not belong to this group.';
+      }
+      if (error.status === 401) {
+        return 'Your session expired. Sign in again to remove this guest.';
+      }
+      if (error.status === 403) {
+        return 'Only the reservation owner can remove a guest from this group.';
+      }
+      if (error.status === 404) {
+        return (
+          apiError?.error ??
+          'This guest session could not be found. Reload the group and try again.'
+        );
+      }
+    }
+    return 'Unable to remove this guest. Please try again.';
   }
 
   private toLoadErrorMessage(error: unknown): string {

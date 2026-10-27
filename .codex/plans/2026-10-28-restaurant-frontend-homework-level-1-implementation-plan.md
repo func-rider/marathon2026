@@ -1,6 +1,8 @@
 # Restaurant Frontend Homework Level 1 Implementation Plan
 
-> **For agentic workers:** Level 1 is complete and the user approved Level 2. Implement Level 2 only, then stop for the user's review. Do not begin Level 3 until the user approves this checkpoint.
+> **For agentic workers:** Implement only the current user-approved homework level, then stop for review before proceeding to the next level.
+
+> **Progress update:** Levels 1 and 2 are complete. The user approved Level 3; implementation is complete and awaiting the user's review.
 
 **Goal:** Add the Owner Review screen for group pre-orders, loading real data from the restaurant backend REST API and matching the supplied screenshot within Homework Level 1.
 
@@ -79,6 +81,26 @@ The current owner flow resolves `groupReservationId` through the invite token. T
 - [x] App/spec TypeScript checks and production build pass. The build reports existing initial-bundle, stylesheet-budget, and CommonJS warnings; the new group-order stylesheet is within its budget.
 - [x] Keep guest removal and polling out of scope. Report Task 2 for the user's review and wait before starting Task 3.
 
-## Deferred until user approval
+## Task 3: Owner removes a guest session
 
-- Level 3: guest removal and group refresh/polling.
+### Acceptance criteria
+
+- Let the reservation owner remove a guest through `DELETE /guest/groups/{groupReservationId}/sessions/{guestSessionId}` using the Cognito ID token.
+- Confirm the permanent removal and show clear errors for unauthorized, mismatched, and missing sessions.
+- Replace the guest list and recompute the displayed total from the updated sessions snapshot returned by the API.
+- Do not add polling.
+
+### Execution
+
+- [x] Add the authenticated API call and connect the Guest card action to the owner page.
+- [x] Add a removal confirmation dialog, in-progress/error/success states, and apply the returned session snapshot and total.
+- [x] App/spec TypeScript checks and formatting pass. Production build passes with the configured real backend URL; existing bundle and stylesheet budget/CommonJS warnings remain.
+- [x] Report Task 3 for the user's review and wait before doing further homework tasks.
+
+### Backend behavior
+
+The backend allows the owner to delete a guest session even after the group has been submitted; deleting that session does not revise the order already sent to the restaurant. The confirmation explains this for submitted groups.
+
+## Deferred
+
+- Polling or automatic group refresh is not part of the requested homework tasks.

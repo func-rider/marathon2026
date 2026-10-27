@@ -40,6 +40,20 @@
   opacity: 1;
 }
 
+.card-action:not(:disabled) {
+  cursor: pointer;
+}
+
+.card-action:not(:disabled):hover {
+  color: color.$green-800;
+  border-color: color.$green-800;
+}
+
+.card-action:focus-visible {
+  outline: 3px solid color.$green-600;
+  outline-offset: 2px;
+}
+
 .items {
   display: grid;
   margin: 0;

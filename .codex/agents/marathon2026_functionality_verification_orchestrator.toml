@@ -16,8 +16,8 @@ tools:[agent]
 ## Required workflow
 
 1. Read any applicable root or nested `AGENTS.md`/`RTK.md` instructions and the frontend app's `CLAUDE.md`. The repository root currently has no `AGENTS.md` or `RTK.md`; re-check when this agent runs.
-2. Launch one temporary read-only agent for `backend/restaurant-backend-app` with the prompt below. Wait for its full result. Capture exact commands, outcomes, test counts, functional areas reviewed, coverage gaps, and environment blockers.
-3. Launch one temporary read-only agent for `frontend/restaurant-frontend-app` with the prompt below. Include the backend handoff and direct it to use backend API documentation/source as the contract when checking frontend requests. Wait for its full result.
+2. Launch one temporary read-only agent with working directory `backend` (the repository's `marathon2026\\backend` area) and the prompt below, which scopes inspection and commands to `restaurant-backend-app`. Wait for its full result. Capture exact commands, outcomes, test counts, functional areas reviewed, coverage gaps, and environment blockers.
+3. Launch one temporary read-only agent with working directory `frontend/restaurant-frontend-app` and the prompt below. Include the backend handoff and direct it to use backend API documentation/source as the contract when checking frontend requests. Wait for its full result.
 4. Do not route findings to implementation agents or attempt fixes. This workflow verifies and reports only.
 5. Return a concise report in backend-then-frontend order. For each area include commands and observed outcomes, test counts where available, functionality covered, uncovered functionality, and blockers. Clearly separate test/build evidence from code-inspection observations. End with whether end-to-end behavior was verified; do not imply it was if no safe local integration environment exists.
 
@@ -25,9 +25,9 @@ If the `agent` tool cannot launch a temporary scoped agent, report that limitati
 
 ## Temporary backend verifier prompt
 
-Launch a temporary agent scoped to `backend/restaurant-backend-app` and give it these instructions:
+Launch a temporary agent with working directory `backend` and give it these instructions. It must change into `restaurant-backend-app` before running solution or test commands:
 
-> Verify the existing backend implementation without changing files. Read applicable local instructions, the solution/project files, API docs, route registry, handlers, services, and tests. Inventory the implemented API/functionality and map the existing tests to it; report important behavior with no test evidence.
+> Verify the existing backend implementation without changing files. Read applicable local instructions, the solution/project files, API docs, route registry, handlers, services, and tests. Account for every registered API route and each Lambda entrypoint, map existing tests to that behavior, and report important behavior with no test evidence.
 >
 > Discover all solution, project, and test-project files. Run a full solution build (`dotnet build restaurant-backend-app.sln`) and run every discovered test project; at minimum run `dotnet test Tests/APIHandler.Tests.csproj`. Do not skip an available project because another check fails. Record exact commands, exit status, pass/fail/skip counts, and relevant error output. Do not add tests or fix failures.
 >
@@ -37,11 +37,11 @@ Wait for this handoff before proceeding.
 
 ## Temporary frontend verifier prompt
 
-After the backend handoff, launch a new temporary agent scoped to `frontend/restaurant-frontend-app` and give it these instructions, including the complete backend handoff:
+After the backend handoff, launch a new temporary agent with working directory `frontend/restaurant-frontend-app` and give it these instructions, including the complete backend handoff:
 
-> Verify the existing Angular app without changing tracked files or fixing issues. Read `CLAUDE.md`, app sources/tests, and the backend API contract in `../..` (`backend/restaurant-backend-app/docs/ApiRoutes.md` and `dnapp/lambdas/api-handler/Routing/RouteRegistry.cs`). Use the supplied backend report as additional evidence, not as a replacement for inspecting the contract. Inventory the implemented screens, routes, and service flows; map existing tests to those flows and identify important behavior with no test evidence.
+> Verify the existing Angular app without changing tracked files or fixing issues. Read `CLAUDE.md`, app sources/tests, and the backend API contract in `../..` (`backend/restaurant-backend-app/docs/ApiRoutes.md` and `dnapp/lambdas/api-handler/Routing/RouteRegistry.cs`). Use the supplied backend report as additional evidence, not as a replacement for inspecting the contract. Account for every frontend route and HTTP service flow; map existing tests to those flows and identify important behavior with no test evidence.
 >
-> Run the documented checks from the app root: `npx tsc -p tsconfig.app.json --noEmit`, `npx tsc -p tsconfig.spec.json --noEmit`, `npm test -- --watch=false`, and `npm run build` with a temporary example `BACKEND_URL=https://example.com` so the configured bundle check runs. Save and restore the prior `BACKEND_URL` value using the shell's environment-variable syntax. If dependencies are absent, use the lockfile-authoritative `npm ci`; do not use `npm install` or change dependency declarations. Record exact commands, exit status, test counts, bundle result, and relevant error output. Do not run lint as a functionality gate; the app documentation records substantial existing lint debt.
+> Before running scripts, inspect their definitions and relevant configuration for source changes, deployed-service calls, or cloud side effects; do not run a check with a prohibited side effect. Run every safe check below even if an earlier check fails. Run these documented commands from the app root: `npx tsc -p tsconfig.app.json --noEmit`, `npx tsc -p tsconfig.spec.json --noEmit`, `npm test -- --watch=false`, and `npm run build` with a temporary example `BACKEND_URL=https://example.com` so the configured bundle check runs. `npm run build` uses the app's documented production default; do not switch to development configuration. Save and restore the prior `BACKEND_URL` value using the shell's environment-variable syntax. If dependencies are absent, use the lockfile-authoritative `npm ci`; do not use `npm install` or change dependency declarations. Record exact commands, exit status, test counts, bundle result, and relevant error output. Do not run lint as a functionality gate; the app documentation records substantial existing lint debt.
 >
 > Do not edit files, call deployed APIs, use credentials, or deploy. `npm ci` is allowed only to restore lockfile-pinned dependencies if they are absent. Trace important UI flows through component behavior, services, request method/URL/body, and API response handling where practical. Return: (1) commands and results; (2) feature flows reviewed and tests exercising them; (3) concrete failures or risks with file/line and triggering behavior; (4) meaningful untested areas; (5) environment and end-to-end integration limits. Separate observed failures from inferred concerns. A passing build is not proof that runtime/API behavior works.
 

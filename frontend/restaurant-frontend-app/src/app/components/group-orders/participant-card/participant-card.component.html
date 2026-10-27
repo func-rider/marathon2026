@@ -7,7 +7,15 @@
       <button class="card-action" type="button" disabled>Edit my Pre-Order</button>
     } @else {
       <h2 class="participant-title">{{ title() }}</h2>
-      <button class="card-action" type="button" disabled>Remove Guest</button>
+      <button
+        class="card-action"
+        type="button"
+        [disabled]="!canRemove()"
+        [attr.aria-label]="'Remove ' + participant().name + ' from group'"
+        (click)="removeRequested.emit(participant())"
+      >
+        Remove Guest
+      </button>
     }
   </header>
 

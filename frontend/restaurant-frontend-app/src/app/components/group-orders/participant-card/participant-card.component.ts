@@ -1,5 +1,5 @@
 import { CurrencyPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { Participant } from '@app/models/group-orders/participant.model';
 
@@ -13,6 +13,8 @@ import { Participant } from '@app/models/group-orders/participant.model';
 })
 export class ParticipantCardComponent {
   readonly participant = input.required<Participant>();
+  readonly canRemove = input(false);
+  readonly removeRequested = output<Participant>();
 
   readonly title = computed(() => {
     const person = this.participant();

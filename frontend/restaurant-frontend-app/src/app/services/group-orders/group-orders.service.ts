@@ -15,7 +15,7 @@ import { ReservationService } from '@app/services/reservation/reservation.servic
 import { GuestInviteService } from '@app/services/reservation/guest-invite.service';
 import { API_BASE_URL } from '@app/shared/config/api-base-url.token';
 
-interface GroupSessionsResponse {
+export interface GroupSessionsSnapshot {
   participants: Participant[];
   total: number;
 }
@@ -113,6 +113,22 @@ export class GroupOrdersService {
     );
   }
 
+  deleteGuestSession$(
+    groupReservationId: string,
+    guestSessionId: string
+  ): Observable<GroupSessionsSnapshot> {
+    const idToken = this.authService.getTokens()?.idToken;
+    if (!idToken) {
+      return throwError(() => new Error('Please sign in as the reservation owner.'));
+    }
+
+    const url = `${this.baseUrl}/guest/groups/${encodeURIComponent(groupReservationId)}/sessions/${encodeURIComponent(guestSessionId)}`;
+    return this.http.delete<GroupSessionsSnapshot>(url, {
+      headers: new HttpHeaders({ Authorization: `Bearer ${idToken}` }),
+      context: new HttpContext().set(SKIP_ERROR_TOAST, true),
+    });
+  }
+
   private getOwnerGuestSessionId$(reservationId: string): Observable<OwnerGuestSessionResponse> {
     const url = `${this.baseUrl}/reservations/${encodeURIComponent(reservationId)}/guest-session-id`;
     return this.http.get<OwnerGuestSessionResponse>(url, {
@@ -130,14 +146,14 @@ export class GroupOrdersService {
       );
   }
 
-  private getGroupSessions$(groupReservationId: string): Observable<GroupSessionsResponse> {
+  private getGroupSessions$(groupReservationId: string): Observable<GroupSessionsSnapshot> {
     const idToken = this.authService.getTokens()?.idToken;
     if (!idToken) {
       return throwError(() => new Error('Please sign in as the reservation owner.'));
     }
 
     const headers = new HttpHeaders({ Authorization: `Bearer ${idToken}` });
-    return this.http.get<GroupSessionsResponse>(
+    return this.http.get<GroupSessionsSnapshot>(
       `${this.baseUrl}/guest/groups/${encodeURIComponent(groupReservationId)}/sessions`,
       { headers }
     );
@@ -178,7 +194,7 @@ export class GroupOrdersService {
     invite: GroupOrderInviteData,
     ownerSessionId: string,
     ownerOrder: Order | null,
-    guestSessions: GroupSessionsResponse,
+    guestSessions: GroupSessionsSnapshot,
     status: GroupReservationStatusResponse
   ): GroupOrderPreview {
     const ownerItems = ownerOrder?.orderItems ?? [];

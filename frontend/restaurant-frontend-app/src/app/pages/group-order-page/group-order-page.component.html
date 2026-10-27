@@ -78,10 +78,17 @@
         <ul class="participants">
           @for (participant of participants(); track participant.id) {
             <li class="participant-item">
-              <app-participant-card [participant]="participant" />
+              <app-participant-card
+                [participant]="participant"
+                [canRemove]="participant.type === 'Guest' && !isRemoving()"
+                (removeRequested)="openRemoveConfirmation($event)"
+              />
             </li>
           }
         </ul>
+        @if (removeSuccess()) {
+          <p class="remove-success" role="status" aria-live="polite">{{ removeSuccess() }}</p>
+        }
       </section>
 
       <footer class="panel-footer">
@@ -146,6 +153,48 @@
             (click)="confirmGroupOrderSubmission()"
           >
             {{ isSubmitting() ? 'Sending...' : 'Confirm & Send' }}
+          </button>
+        </div>
+      </dialog>
+    }
+
+    @if (pendingRemoval(); as guest) {
+      <dialog
+        #removeDialog
+        class="submit-confirmation"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="remove-confirmation-title"
+        aria-describedby="remove-confirmation-description"
+        (cancel)="handleRemoveDialogCancel($event)"
+      >
+        <h2 id="remove-confirmation-title">Remove {{ guest.name }} from the group?</h2>
+        <p id="remove-confirmation-description">
+          This permanently removes {{ guest.name }} and their guest session from this group.
+          @if (groupOrder()?.status === 'Submitted') {
+            The order already sent to the restaurant will remain unchanged.
+          }
+        </p>
+        @if (removeError()) {
+          <p class="submit-error" role="alert">{{ removeError() }}</p>
+        }
+        <div class="confirmation-actions">
+          <button
+            class="retry-button"
+            type="button"
+            autofocus
+            [disabled]="isRemoving()"
+            (click)="cancelRemoveConfirmation()"
+          >
+            Cancel
+          </button>
+          <button
+            class="submit-button"
+            type="button"
+            [disabled]="isRemoving()"
+            (click)="confirmGuestRemoval()"
+          >
+            {{ isRemoving() ? 'Removing...' : 'Remove Guest' }}
           </button>
         </div>
       </dialog>
