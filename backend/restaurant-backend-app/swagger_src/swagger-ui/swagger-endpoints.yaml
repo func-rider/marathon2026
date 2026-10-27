@@ -477,8 +477,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                description: Updated snapshot of the group reservation
+                $ref: '#/components/schemas/GetAllSessionsResponse'
         '400':
           description: Invalid request - missing required path parameters
           content:
@@ -487,6 +486,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Only the reservation owner may delete a guest session
           content:
             application/json:
               schema:
