@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/shared/custom-components/rating/rating.component.scss"],
+  "sourcesContent": [".stars {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 0.5rem;\r\n  font-size: 2rem;\r\n}\r\n\r\n.star {\r\n  cursor: pointer;\r\n  border: none;\r\n  transition: color 0.3s;\r\n}\r\n\r\n.label {\r\n  font-weight: bold;\r\n  margin-left: 1rem;\r\n}\r\n"],
+  "mappings": ";AAAA,CAAA;AACE,WAAA;AACA,eAAA;AACA,OAAA;AACA,aAAA;;AAGF,CAAA;AACE,UAAA;AACA,UAAA;AACA,cAAA,MAAA;;AAGF,CAAA;AACE,eAAA;AACA,eAAA;;",
+  "names": []
+}

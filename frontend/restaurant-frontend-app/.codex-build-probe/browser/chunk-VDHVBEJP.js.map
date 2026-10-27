@@ -1,0 +1,14 @@
+{
+  "version": 3,
+  "sources": [
+    "src/app/pages/guest-pre-order-expired-page/guest-pre-order-expired-page.component.ts",
+    "src/app/pages/guest-pre-order-expired-page/guest-pre-order-expired-page.component.html"
+  ],
+  "sourcesContent": [
+    "import { ChangeDetectionStrategy, Component } from '@angular/core';\r\n\r\n@Component({\r\n    standalone: true,\r\n    selector: 'app-guest-pre-order-expired-page',\r\n    templateUrl: './guest-pre-order-expired-page.component.html',\r\n    styleUrl: './guest-pre-order-expired-page.component.scss',\r\n    changeDetection: ChangeDetectionStrategy.OnPush,\r\n})\r\nexport class GuestPreOrderExpiredPageComponent {}",
+    "<div class=\"page\">\r\n    <div class=\"card\">\r\n        <h1>This pre-order session has expired or is no longer active.</h1>\r\n        <p>Please ask the reservation owner to generate a new link.</p>\r\n    </div>\r\n</div>"
+  ],
+  "mappings": ";;;;;;;;;;;;AASM,IAAO,oCAAP,MAAO,mCAAiC;;qCAAjC,oCAAiC;EAAA;yEAAjC,oCAAiC,WAAA,CAAA,CAAA,kCAAA,CAAA,GAAA,OAAA,GAAA,MAAA,GAAA,QAAA,CAAA,CAAA,GAAA,MAAA,GAAA,CAAA,GAAA,MAAA,CAAA,GAAA,UAAA,SAAA,2CAAA,IAAA,KAAA;AAAA,QAAA,KAAA,GAAA;ACT9C,MAAA,4BAAA,GAAA,OAAA,CAAA,EAAkB,GAAA,OAAA,CAAA,EACI,GAAA,IAAA;AACV,MAAA,iBAAA,GAAA,4DAAA;AAA0D,MAAA,0BAAA;AAC9D,MAAA,4BAAA,GAAA,GAAA;AAAG,MAAA,iBAAA,GAAA,0DAAA;AAAwD,MAAA,0BAAA,EAAI,EAC7D;;;;;sEDKG,mCAAiC,CAAA;UAP7C;yBACe,MAAI,UACN,oCAAkC,iBAG3B,wBAAwB,QAAM,UAAA,kOAAA,QAAA,CAAA,6XAAA,EAAA,CAAA;;;;6EAEtC,mCAAiC,EAAA,WAAA,qCAAA,UAAA,oFAAA,YAAA,GAAA,CAAA;AAAA,GAAA;",
+  "names": [],
+  "debugId": "fab1eb24-d1d8-598a-89a3-d3525a08745f"
+}

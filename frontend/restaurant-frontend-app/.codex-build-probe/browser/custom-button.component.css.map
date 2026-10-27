@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/shared/custom-components/custom-button/custom-button.component.scss"],
+  "sourcesContent": [":host {\r\n  display: inline-block;\r\n  max-width: 100%;\r\n  vertical-align: top;\r\n}\r\n\r\n:host(.custom-button-host--full-width) {\r\n  display: block;\r\n  width: 100%;\r\n}\r\n\r\n.custom-button {\r\n  width: auto;\r\n}\r\n\r\n.custom-button.button--full-width {\r\n  width: 100%;\r\n}\r\n"],
+  "mappings": ";AAAA;AACE,WAAA;AACA,aAAA;AACA,kBAAA;;AAGF,MAAA,CAAA;AACE,WAAA;AACA,SAAA;;AAGF,CAAA;AACE,SAAA;;AAGF,CAJA,aAIA,CAAA;AACE,SAAA;;",
+  "names": []
+}
