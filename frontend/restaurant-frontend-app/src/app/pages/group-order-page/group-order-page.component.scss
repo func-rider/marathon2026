@@ -218,7 +218,7 @@
   min-height: 3.5rem;
   padding: 0 1.5rem;
   color: color.$neutral-0;
-  background-color: color.$neutral-400;
+  background-color: color.$green-800;
   border: 0;
   border-radius: 0.5rem;
   font: inherit;
@@ -227,6 +227,33 @@
 
 .submit-button:disabled {
   cursor: not-allowed;
+  background-color: color.$neutral-400;
+}
+
+.submit-confirmation {
+  width: min(100%, 31rem);
+  max-height: calc(100dvh - 2rem);
+  box-sizing: border-box;
+  overflow-y: auto;
+  margin: auto;
+  padding: 1.5rem;
+  color: color.$neutral-900;
+  background-color: color.$neutral-100;
+  border: 0;
+  border-radius: 1rem;
+}
+
+.submit-confirmation::backdrop {
+  background-color: rgba(color.$neutral-900, 0.5);
+}
+
+.submit-confirmation .submit-error {
+  color: color.$red-400;
+}
+
+.confirmation-actions {
+  display: grid;
+  gap: 0.75rem;
 }
 
 @media (max-width: 600px) {

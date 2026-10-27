@@ -13,6 +13,7 @@ describe('GroupOrderPageComponent', () => {
 
   const apiGroupOrder: GroupOrderPreview = {
     invite: {
+      GroupReservationId: 'group-reservation-1',
       LocationAddress: '48 Rustaveli Avenue',
       StartTime: '2026-10-17T12:00:00',
       EndTime: '2026-10-17T14:00:00',
@@ -41,13 +42,13 @@ describe('GroupOrderPageComponent', () => {
     },
     status: 'Open',
     currentParticipants: 4,
+    hasOwnerOrder: true,
   };
 
   beforeEach(async () => {
-    groupOrdersService = jasmine.createSpyObj<GroupOrdersService>(
-      'GroupOrdersService',
-      ['getOwnerGroupOrder$']
-    );
+    groupOrdersService = jasmine.createSpyObj<GroupOrdersService>('GroupOrdersService', [
+      'getOwnerGroupOrder$',
+    ]);
     groupOrdersService.getOwnerGroupOrder$.and.returnValue(of(apiGroupOrder));
 
     await TestBed.configureTestingModule({
@@ -57,7 +58,12 @@ describe('GroupOrderPageComponent', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            snapshot: { paramMap: convertToParamMap({ reservationId: 'reservation-1' }) },
+            snapshot: {
+              paramMap: convertToParamMap({ reservationId: 'reservation-1' }),
+              queryParamMap: convertToParamMap({
+                groupReservationId: 'group-reservation-1',
+              }),
+            },
           },
         },
         { provide: GroupOrdersService, useValue: groupOrdersService },
@@ -70,7 +76,10 @@ describe('GroupOrderPageComponent', () => {
   });
 
   it('loads the reservation and group order from the API service', () => {
-    expect(groupOrdersService.getOwnerGroupOrder$).toHaveBeenCalledOnceWith('reservation-1');
+    expect(groupOrdersService.getOwnerGroupOrder$).toHaveBeenCalledOnceWith(
+      'reservation-1',
+      'group-reservation-1'
+    );
   });
 
   it('shows the group reservation details and current participant capacity', () => {

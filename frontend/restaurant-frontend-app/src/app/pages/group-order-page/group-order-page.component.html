@@ -89,8 +89,66 @@
           <span>Grand Total</span>
           <span>{{ data.sessions.total | currency: 'USD' : 'symbol' : '1.0-2' }}</span>
         </p>
-        <button class="submit-button" type="button" disabled>Submit Pre-Order</button>
+        @if (submitSuccess()) {
+          <p class="submit-success" role="status">Group pre-order sent to the restaurant.</p>
+        } @else if (data.status === 'Open') {
+          @if (submitReadinessMessage(); as message) {
+            <p class="submit-hint">{{ message }}</p>
+          }
+          <button
+            class="submit-button"
+            type="button"
+            [disabled]="!canSubmit()"
+            (click)="openSubmitConfirmation()"
+          >
+            Submit Pre-Order
+          </button>
+        } @else {
+          <p class="submit-success" role="status">This group pre-order has been submitted.</p>
+        }
       </footer>
+    }
+
+    @if (isSubmitConfirmationOpen()) {
+      <dialog
+        #submitDialog
+        class="submit-confirmation"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="submit-confirmation-title"
+        aria-describedby="submit-confirmation-description"
+        (cancel)="handleSubmitDialogCancel($event)"
+      >
+        <h2 id="submit-confirmation-title">Submit group pre-order?</h2>
+        <p id="submit-confirmation-description">
+          This sends {{ submittedGuestCount() }} submitted guest
+          {{ submittedGuestCount() === 1 ? 'order' : 'orders' }} to the restaurant. Unsubmitted
+          guest carts will not be included, and the reservation order will be replaced with the
+          submitted guest dishes.
+        </p>
+        @if (submitError()) {
+          <p class="submit-error" role="alert">{{ submitError() }}</p>
+        }
+        <div class="confirmation-actions">
+          <button
+            class="retry-button"
+            type="button"
+            autofocus
+            [disabled]="isSubmitting()"
+            (click)="cancelSubmitConfirmation()"
+          >
+            Cancel
+          </button>
+          <button
+            class="submit-button"
+            type="button"
+            [disabled]="isSubmitting()"
+            (click)="confirmGroupOrderSubmission()"
+          >
+            {{ isSubmitting() ? 'Sending...' : 'Confirm & Send' }}
+          </button>
+        </div>
+      </dialog>
     }
   </section>
 </main>

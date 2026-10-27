@@ -1,6 +1,7 @@
 import { Participant } from './participant.model';
 
 export interface GroupOrderInvitePreview {
+  GroupReservationId: string;
   LocationAddress: string;
   StartTime: string;
   EndTime: string;
@@ -17,4 +18,5 @@ export interface GroupOrderPreview {
   sessions: GroupOrderSessionsPreview;
   status: 'Open' | 'Submitted' | 'Closed';
   currentParticipants: number;
+  hasOwnerOrder: boolean;
 }

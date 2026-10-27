@@ -1,6 +1,6 @@
 # Restaurant Frontend Homework Level 1 Implementation Plan
 
-> **For agentic workers:** Execute inline in this session. Implement Level 1 only, then stop for the user's review. Do not begin Level 2 or Level 3 until the user approves this checkpoint.
+> **For agentic workers:** Level 1 is complete and the user approved Level 2. Implement Level 2 only, then stop for the user's review. Do not begin Level 3 until the user approves this checkpoint.
 
 **Goal:** Add the Owner Review screen for group pre-orders, loading real data from the restaurant backend REST API and matching the supplied screenshot within Homework Level 1.
 
@@ -12,7 +12,7 @@
 
 - Work only on `frontend/restaurant-frontend-app` for application code.
 - Use backend REST data at runtime; do not use mock or preview data.
-- Keep this checkpoint read-only: no submission, guest removal, polling, or demo authentication.
+- Level 2 adds submission; do not add guest removal, polling, or demo authentication.
 - Use one `<main>`, one `<h1>`, a participant `<ul>`/`<li>`, and an `<article>` per participant card.
 - Show cart status with text as well as color; source colors through `@use 'app/shared/styles/abstracts/colors' as color`.
 - Keep the screen usable at a 375px viewport.
@@ -41,7 +41,7 @@
 - The API-provided participants and the owner order render names, item names, quantities, prices, textual submission state, and subtotals.
 - Grand Total renders the live owner order total plus the API-provided guest total with `CurrencyPipe`.
 - The screen meets the required semantic structure and adapts to 375px width without horizontal overflow.
-- The owner session ID and group submit endpoints remain deferred to Level 2.
+- Level 2 adds owner session lookup and group submission as described below.
 
 ### Execution
 
@@ -57,9 +57,28 @@
 
 ### Backend API limitation
 
-The current owner flow resolves `groupReservationId` through the invite token. The backend rejects invite-token lookup for submitted groups, and invite details lookup rejects a full group. As a result, this page can load open groups that have remaining capacity, but cannot reload submitted or full groups through the current API. Fixing that requires a backend lookup by reservation ID and is outside this Level 1 checkpoint.
+The current owner flow resolves `groupReservationId` through the invite token. The backend rejects invite-token lookup for submitted groups, and invite details lookup rejects a full group. After the page resolves an open group, it keeps the group ID in the URL so that same owner link can reload submitted data directly from the owner-protected sessions/status endpoints. A fresh link to a previously submitted or full group still needs a backend lookup by reservation ID.
+
+## Task 2: Owner session and consolidated submission
+
+### Acceptance criteria
+
+- Read the owner `guestSessionId` from `GET /reservations/{reservationId}/guest-session-id` and use it for the Owner participant identity.
+- Submit through `POST /group-reservations/{groupReservationId}/submit` with `{ reservationId }`.
+- Preserve the resolved group ID in the owner page URL so the submitted page can reload without the invite lookup.
+- Allow submission only when an owner order exists and at least one guest has submitted dishes.
+- Confirm that only submitted guest sessions are sent and that the backend replaces the reservation order with their consolidated dishes.
+- Show submitting, error, and success states; on success show the submitted consolidated order from the API response.
+- Do not implement Level 3 guest removal or polling.
+
+### Execution
+
+- [x] Implement owner session ID retrieval and group submit API calls; refresh the final order from the backend after successful submit.
+- [x] Keep the resolved group ID in the page URL and load existing group data directly on reload.
+- [x] Add submit readiness checks, an accessible confirmation dialog, and success/error states.
+- [x] App/spec TypeScript checks and production build pass. The build reports existing initial-bundle, stylesheet-budget, and CommonJS warnings; the new group-order stylesheet is within its budget.
+- [x] Keep guest removal and polling out of scope. Report Task 2 for the user's review and wait before starting Task 3.
 
 ## Deferred until user approval
 
-- Level 2: owner session lookup and consolidated submission.
 - Level 3: guest removal and group refresh/polling.
