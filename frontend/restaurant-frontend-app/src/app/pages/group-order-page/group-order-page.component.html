@@ -1,0 +1,96 @@
+<main class="group-order-backdrop">
+  <section
+    class="group-order-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="group-order-title"
+  >
+    <header class="panel-header">
+      <div class="title-row">
+        <div class="title-with-status">
+          <h1 id="group-order-title">Group Pre-Order</h1>
+          @if (groupOrder()) {
+            <span class="order-status">{{ orderStatusLabel() }}</span>
+          }
+        </div>
+        <a class="close-link" routerLink="/reservations" aria-label="Close group pre-order">
+          <img src="assets/svg/close.svg" alt="" aria-hidden="true" />
+        </a>
+      </div>
+
+      @if (groupOrder(); as data) {
+        <dl class="reservation-details">
+          <div class="detail-item">
+            <dt class="visually-hidden">Location</dt>
+            <dd>
+              <span class="detail-icon" aria-hidden="true">
+                <img class="detail-icon--large" src="assets/svg/location-green.svg" alt="" />
+              </span>
+              {{ data.invite.LocationAddress }}
+            </dd>
+          </div>
+
+          <div class="detail-item">
+            <dt class="visually-hidden">Date</dt>
+            <dd>
+              <span class="detail-icon" aria-hidden="true">
+                <img src="assets/svg/calendar-green.svg" alt="" />
+              </span>
+              {{ data.invite.StartTime | date: 'mediumDate' }}
+            </dd>
+          </div>
+
+          <div class="detail-item">
+            <dt class="visually-hidden">Time</dt>
+            <dd>
+              <span class="detail-icon" aria-hidden="true">
+                <img src="assets/svg/clock-green.svg" alt="" />
+              </span>
+              {{ data.invite.StartTime | date: 'HH:mm' }} -
+              {{ data.invite.EndTime | date: 'HH:mm' }}
+            </dd>
+          </div>
+
+          <div class="detail-item">
+            <dt class="visually-hidden">Guests</dt>
+            <dd>
+              <span class="detail-icon" aria-hidden="true">
+                <img class="detail-icon--large" src="assets/svg/people-green.svg" alt="" />
+              </span>
+              {{ guestCountLabel() }}
+            </dd>
+          </div>
+        </dl>
+      }
+    </header>
+
+    @if (isLoading()) {
+      <section class="load-state" role="status" aria-live="polite">
+        Loading group pre-order...
+      </section>
+    } @else if (loadError()) {
+      <section class="load-state load-state--error" role="alert">
+        <p>{{ loadError() }}</p>
+        <button class="retry-button" type="button" (click)="loadGroupOrder()">Try again</button>
+      </section>
+    } @else if (groupOrder(); as data) {
+      <section class="participants-section" aria-label="Participants">
+        <ul class="participants">
+          @for (participant of participants(); track participant.id) {
+            <li class="participant-item">
+              <app-participant-card [participant]="participant" />
+            </li>
+          }
+        </ul>
+      </section>
+
+      <footer class="panel-footer">
+        <p class="grand-total">
+          <span>Grand Total</span>
+          <span>{{ data.sessions.total | currency: 'USD' : 'symbol' : '1.0-2' }}</span>
+        </p>
+        <button class="submit-button" type="button" disabled>Submit Pre-Order</button>
+      </footer>
+    }
+  </section>
+</main>
