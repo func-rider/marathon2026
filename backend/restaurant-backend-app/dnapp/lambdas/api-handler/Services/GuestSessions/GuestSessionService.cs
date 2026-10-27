@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using APIHandler.Services.Notifications;
 
@@ -190,14 +191,37 @@ public class GuestSessionService(
             throw new ValidationException("Guest session does not belong to this group reservation.");
         }
 
+        if (session.IsOwnerSession)
+            throw new ValidationException("Owner sessions cannot be deleted as guest sessions.");
+
         await guestSessionRepository.DeleteAsync(session);
 
         return await GetAllSessionsResponseAsync(groupReservationId);
     }
 
+    public async Task<string> GetOwnerGuestSessionIdAsync(string userId, string reservationId)
+    {
+        var reservation = await reservationRepository.GetReservationByIdAsync(reservationId)
+            ?? throw new ReservationNotFoundException($"Reservation '{reservationId}' not found.");
+
+        if (!string.Equals(reservation.CustomerId, userId, StringComparison.OrdinalIgnoreCase))
+            throw new ActionForbiddenException("Only the reservation owner can retrieve the owner session.");
+
+        var group = await groupReservationRepository.GetByReservationIdAsync(reservationId)
+            ?? throw new GroupReservationNotFoundException();
+
+        var sessions = await guestSessionRepository.GetAllByGroupReservationIdAsync(group.GroupReservationId);
+        var ownerSession = sessions.FirstOrDefault(session =>
+            session.IsOwnerSession && string.Equals(session.OwnerUserId, userId, StringComparison.OrdinalIgnoreCase));
+
+        return ownerSession?.Id ?? await CreateGroupOwnerSessionWithIdAsync(userId, group.GroupReservationId);
+    }
+
     private async Task<GetAllSessionsResponse> GetAllSessionsResponseAsync(string groupReservationId)
     {
-        var sessions = await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId);
+        var sessions = (await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId))
+            .Where(session => !session.IsOwnerSession)
+            .ToList();
 
         var dishIds = sessions
             .SelectMany(s => s.Dishes)
@@ -252,7 +276,7 @@ public class GuestSessionService(
 
         // Owner is always 1 active participant. 
         // If sessions is null/empty, it safely evaluates to 0 joined guests + 1 owner = 1.
-        return (sessions?.Count ?? 0) + 1;
+        return (sessions?.Count(session => !session.IsOwnerSession) ?? 0) + 1;
     }
 
     private async Task ValidateGroupReservationId(string groupReservationId) => await GetGroupReservationAndValidateAsync(groupReservationId);
@@ -322,9 +346,14 @@ public class GuestSessionService(
 
     public async Task CreateGroupOwnerSessionAsync(string userId, string groupReservationId)
     {
-        var session = new GuestSession()
+        await CreateGroupOwnerSessionWithIdAsync(userId, groupReservationId);
+    }
+
+    private async Task<string> CreateGroupOwnerSessionWithIdAsync(string userId, string groupReservationId)
+    {
+        var session = new GuestSession
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = CreateOwnerGuestSessionId(userId, groupReservationId),
             GroupReservationId = groupReservationId,
             GuestName = "Owner",
             Dishes = [],
@@ -332,7 +361,27 @@ public class GuestSessionService(
             OwnerUserId = userId,
         };
 
-        await guestSessionRepository.SaveAsync(session);
+        if (await guestSessionRepository.TryCreateOwnerSessionIfAbsentAsync(session))
+            return session.Id;
+
+        var winner = await guestSessionRepository.GetByGuestSessionId(session.Id)
+            ?? throw new InvalidOperationException("The owner session already exists but could not be loaded.");
+
+        if (!winner.IsOwnerSession ||
+            winner.GroupReservationId != groupReservationId ||
+            !string.Equals(winner.OwnerUserId, userId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The owner session ID is already assigned to a different session.");
+        }
+
+        return winner.Id;
+    }
+
+    private static string CreateOwnerGuestSessionId(string userId, string groupReservationId)
+    {
+        var value = Encoding.UTF8.GetBytes($"{groupReservationId}\0{userId}");
+        var hash = Convert.ToHexString(SHA256.HashData(value)).ToLowerInvariant();
+        return $"owner-{hash}";
     }
 
     public async Task<GetGuestSessionResponse> GetGuestSessionInfoAsync(string guestSessionId)

@@ -10,6 +10,7 @@ public interface IGroupReservationService
 {
     Task<GroupReservation> GetGroupReservationAsync(string groupReservationId);
     Task<GroupReservation> CreateGroupReservationAsync(string reservationId);
+    Task<List<GroupPreOrderDishResponse>> SubmitGroupPreOrderAsync(string userId, string groupReservationId, string reservationId, Amazon.Lambda.Core.ILambdaContext context);
     Task UpdateGroupReservationStatusAsync(string groupReservationId, GroupReservationStatus status);
     Task DeleteGroupReservationAsync(string groupReservationId);
     Task<GetGroupReservationResponse> GetGroupReservationByTokenAsync(string token);

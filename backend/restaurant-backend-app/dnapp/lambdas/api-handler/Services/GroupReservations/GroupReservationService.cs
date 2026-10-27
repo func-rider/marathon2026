@@ -9,6 +9,9 @@ using APIHandler.Repositories.Reservations;
 using APIHandler.Repositories.Tables;
 using APIHandler.Services.Auth;
 using APIHandler.Services.Locations;
+using APIHandler.Services.Orders;
+using System.Collections.Generic;
+using System.Linq;
 using System;
 using System.Threading.Tasks;
 
@@ -20,9 +23,21 @@ public class GroupReservationService(
     IReservationRepository reservationRepository,
     IGuestSessionRepository guestSessionRepository,
     IUserService userService,
-    ILocationService locationService) : IGroupReservationService
+    ILocationService locationService,
+    IOrderService orderService) : IGroupReservationService
 {
     private const string DefaultRestaurantName = "Green & Tasty";
+
+    public GroupReservationService(
+        IGroupReservationRepository groupReservationRepository,
+        ITableRepository tableRepository,
+        IReservationRepository reservationRepository,
+        IGuestSessionRepository guestSessionRepository,
+        IUserService userService,
+        ILocationService locationService)
+        : this(groupReservationRepository, tableRepository, reservationRepository, guestSessionRepository, userService, locationService, null!)
+    {
+    }
 
     public async Task<GetGroupReservationResponse> GetGroupReservationByTokenAsync(string token)
     {
@@ -69,6 +84,61 @@ public class GroupReservationService(
     {
         GroupReservation? groupReservation = await groupReservationRepository.GetGroupReservationByIdAsync(groupReservationId);
         return groupReservation ?? throw new InvalidOperationException($"Group reservation with ID {groupReservationId} not found.");
+    }
+
+    public async Task<List<GroupPreOrderDishResponse>> SubmitGroupPreOrderAsync(
+        string userId,
+        string groupReservationId,
+        string reservationId,
+        Amazon.Lambda.Core.ILambdaContext context)
+    {
+        var groupReservation = await groupReservationRepository.GetGroupReservationByIdAsync(groupReservationId)
+            ?? throw new GroupReservationNotFoundException();
+
+        var reservation = await reservationRepository.GetReservationByIdAsync(groupReservation.ReservationId)
+            ?? throw new ReservationNotFoundException("Parent reservation not found.");
+
+        if (!string.Equals(reservation.CustomerId, userId, StringComparison.OrdinalIgnoreCase))
+            throw new ActionForbiddenException("Only the reservation owner can submit this group pre-order.");
+
+        if (!string.Equals(groupReservation.ReservationId, reservationId, StringComparison.Ordinal))
+            throw new ValidationException("The reservationId does not match the group reservation.");
+
+        if (groupReservation.Status == GroupReservationStatus.Submitted)
+            throw new GroupReservationSubmittedException();
+
+        var submittedSessions = (await guestSessionRepository.GetAllByGroupReservationIdAsync(groupReservationId))
+            .Where(session => session.IsSubmitted)
+            .ToArray();
+
+        if (submittedSessions.Length == 0)
+            throw new ValidationException("There are no submitted sessions for this group reservation.");
+
+        var consolidatedDishes = submittedSessions
+            .SelectMany(session => session.Dishes ?? [])
+            .GroupBy(dish => dish.DishId)
+            .Select(group => new OrderItem
+            {
+                DishId = group.Key,
+                Quantity = group.Sum(dish => dish.Quantity)
+            })
+            .ToList();
+
+        if (consolidatedDishes.Count == 0)
+            throw new ValidationException("Submitted sessions do not contain any dishes.");
+
+        if (await orderService.GetOrderByReservationIdAsync(reservationId) is null)
+            throw new ValidationException("Order not found.");
+
+        await orderService.EditPreOrderAsync(userId, reservationId, consolidatedDishes, context);
+        await orderService.SubmitPreOrderAsync(userId, reservationId, context);
+
+        groupReservation.Status = GroupReservationStatus.Submitted;
+        await groupReservationRepository.SaveGroupReservationAsync(groupReservation);
+
+        return consolidatedDishes
+            .Select(dish => new GroupPreOrderDishResponse(dish.DishId, dish.Quantity))
+            .ToList();
     }
 
     public async Task<GroupReservation> CreateGroupReservationAsync(string reservationId)
