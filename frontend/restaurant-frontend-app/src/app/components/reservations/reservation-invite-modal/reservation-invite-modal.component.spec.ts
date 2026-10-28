@@ -151,13 +151,26 @@ describe('ReservationInviteModalComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/reservations']);
   });
 
-  it('closes and navigates to the menu on Make Pre-Order', () => {
+  it('closes and opens the menu in pre-order mode for this reservation', () => {
     render(BASE_RESERVATION);
     spyOn(component.closed, 'emit');
 
     element.querySelector<HTMLButtonElement>('.pre-order-btn')!.click();
 
     expect(component.closed.emit).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/menu']);
+    const startTime = new Date(BASE_RESERVATION.startTime);
+    const endTime = new Date(BASE_RESERVATION.endTime);
+    expect(router.navigate).toHaveBeenCalledWith(['/menu'], {
+      queryParams: {
+        preOrder: 'true',
+        reservationId: BASE_RESERVATION.id,
+        reservationLabel: [
+          BASE_RESERVATION.locationAddress,
+          `Table ${BASE_RESERVATION.tableId}`,
+          startTime.toDateString(),
+          `${startTime.toLocaleTimeString()} - ${endTime.toLocaleTimeString()}`,
+        ].join(', '),
+      },
+    });
   });
 });

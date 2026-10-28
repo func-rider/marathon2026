@@ -1,90 +1,67 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ParticipantCardComponent } from './participant-card.component';
+// Практичне · картка учасника. Тести готові — пиши код, поки всі не стануть зеленими.
+// Запуск: npm run test:hw
+import { TestBed } from '@angular/core/testing';
 import { Participant } from '@app/models/group-orders/participant.model';
+import { ParticipantCardComponent } from './participant-card.component';
 
-describe('ParticipantCardComponent', () => {
-  let fixture: ComponentFixture<ParticipantCardComponent>;
+const OLENA: Participant = {
+  id: 'olena',
+  type: 'Guest',
+  name: 'Olena',
+  isSubmitted: false,
+  total: 440,
+  items: [{ dish: { id: 'dish2', name: 'Tom Yum', price: 220, imageUrl: 'assets/img/dishes/spring-salad.jpg' }, quantity: 2 }],
+};
+const OWNER: Participant = { id: 'owner', type: 'Owner', name: 'Yevhenii', isSubmitted: true, total: 0, items: [] };
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [ParticipantCardComponent],
-    }).compileComponents();
+function render(participant: Participant): HTMLElement {
+  const fixture = TestBed.createComponent(ParticipantCardComponent);
+  fixture.componentRef.setInput('participant', participant); // так у тесті передаємо input
+  fixture.detectChanges();
+  return fixture.nativeElement as HTMLElement;
+}
+
+describe('Практичне · картка учасника', () => {
+  describe('крок 1 · заголовок картки', () => {
+    it('гість: <h2> «Guest: Olena»', () => {
+      expect(render(OLENA).querySelector('h2')?.textContent).toContain('Guest: Olena');
+    });
+
+    it('власник: <h2> «Owner: Yevhenii»', () => {
+      expect(render(OWNER).querySelector('h2')?.textContent).toContain('Owner: Yevhenii');
+    });
   });
 
-  function renderParticipant(participant: Participant): HTMLElement {
-    fixture = TestBed.createComponent(ParticipantCardComponent);
-    fixture.componentRef.setInput('participant', participant);
-    fixture.detectChanges();
-    return fixture.nativeElement as HTMLElement;
-  }
-
-  it('labels the owner and guest by their role and name', () => {
-    const ownerElement = renderParticipant({
-      id: 'owner-session',
-      type: 'Owner',
-      name: 'Yevhenii',
-      items: [],
-      total: 0,
-      isSubmitted: false,
+  describe('крок 3 · страви і Subtotal', () => {
+    it('показує назву страви, кількість і ціну × кількість через currency', () => {
+      const text = render(OLENA).textContent ?? '';
+      expect(text).toContain('Tom Yum');
+      expect(text).toContain('2');
+      expect(text).toContain('$440.00');
     });
 
-    expect(ownerElement.querySelector('h2')?.textContent).toContain('Owner: Yevhenii');
-
-    const guestElement = renderParticipant({
-      id: 'guest-session',
-      type: 'Guest',
-      name: 'Kateryna',
-      items: [],
-      total: 0,
-      isSubmitted: false,
+    it('показує Subtotal учасника', () => {
+      expect(render(OLENA).textContent).toContain('Subtotal');
     });
 
-    expect(guestElement.querySelector('h2')?.textContent).toContain('Guest: Kateryna');
+    it('порожній кошик: «No dishes yet»', () => {
+      expect(render(OWNER).textContent).toContain('No dishes yet');
+    });
+
+    it('фото страви має розмір 40×40', () => {
+      const img = render(OLENA).querySelector('img');
+      expect(img?.getAttribute('width')).toBe('40');
+      expect(img?.getAttribute('height')).toBe('40');
+    });
   });
 
-  it('shows dish quantities, line prices, subtotal, and submitted status', () => {
-    const participantElement = renderParticipant({
-      id: 'guest-session',
-      type: 'Guest',
-      name: 'Kateryna',
-      items: [
-        {
-          dish: {
-            id: 'caesar-salad',
-            name: 'Caesar Salad',
-            price: 18,
-            imageUrl: null,
-          },
-          quantity: 2,
-        },
-      ],
-      total: 36,
-      isSubmitted: true,
+  describe('крок 4 · статус кошика текстом', () => {
+    it('«Still choosing», якщо кошик не підтверджений', () => {
+      expect(render(OLENA).textContent).toContain('Still choosing');
     });
 
-    const text = participantElement.textContent ?? '';
-
-    expect(text).toContain('Caesar Salad');
-    expect(text).toContain('× 2');
-    expect(text).toContain('$36');
-    expect(text).toContain('Subtotal');
-    expect(text).toContain('Submitted');
-  });
-
-  it('shows a text status and empty message when a cart has no dishes', () => {
-    const participantElement = renderParticipant({
-      id: 'guest-session',
-      type: 'Guest',
-      name: 'Alex',
-      items: [],
-      total: 0,
-      isSubmitted: false,
+    it('«Submitted», якщо підтверджений', () => {
+      expect(render({ ...OLENA, isSubmitted: true }).textContent).toContain('Submitted');
     });
-
-    const text = participantElement.textContent ?? '';
-
-    expect(text).toContain('No dishes yet');
-    expect(text).toContain('Still choosing');
-    expect(text).toContain('Subtotal');
   });
 });

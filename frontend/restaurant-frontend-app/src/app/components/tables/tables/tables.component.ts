@@ -32,6 +32,7 @@ import { Reservation } from '@app/models/reservations/reservation.model';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthenticationService } from '@app/auth/services/authentication.service';
 import { ToastService } from '@app/services/toast/toast.service';
+import { isDemoAuthorization } from '@app/shared/mocks/auth/demo-auth';
 
 const UNKNOWN_LOCATION_LABEL = 'Location unavailable';
 const ALL_LOCATIONS_LABEL = 'All Locations';
@@ -243,7 +244,10 @@ export class TablesComponent implements OnInit {
   }
 
   onMakeReservation(tableId: string, timeRange: TimeRange, guests: number): void {
-    this.redirectIfNotLoggedIn();
+    if (!this.redirectIfNotLoggedIn()) {
+      return;
+    }
+
     this.selectedTimeRange = timeRange;
 
     const date = revertFormatDate(this.selectedFilter.date!);
@@ -290,12 +294,22 @@ export class TablesComponent implements OnInit {
     this.loadAvailableTables();
   }
 
-  private redirectIfNotLoggedIn() {
-    const token = this.authenticationService.getToken();
-    if (!token) {
+  private redirectIfNotLoggedIn(): boolean {
+    const tokens = this.authenticationService.getTokens();
+    const hasDemoToken =
+      tokens !== null && isDemoAuthorization(`Bearer ${tokens.idToken}`);
+
+    if (!tokens || hasDemoToken) {
+      if (hasDemoToken) {
+        this.authenticationService.signOut();
+      }
+
       console.error('User is not authenticated. Cannot make a reservation.');
       this.router.navigate(['/login']);
+      return false;
     }
+
+    return true;
   }
 
   onCloseReservationConfirmed(): void {
@@ -309,7 +323,10 @@ export class TablesComponent implements OnInit {
   }
 
   onCancelReservation(): void {
-    this.redirectIfNotLoggedIn();
+    if (!this.redirectIfNotLoggedIn()) {
+      return;
+    }
+
     this.reservationService
       .cancelReservation$(this.reservation!.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -321,7 +338,10 @@ export class TablesComponent implements OnInit {
   }
 
   onSubmitEditReservation(timeRange: TimeRange, guests: number): void {
-    this.redirectIfNotLoggedIn();
+    if (!this.redirectIfNotLoggedIn()) {
+      return;
+    }
+
     this.reservationService
       .editReservation$(this.reservation!.id, timeRange, guests)
       .pipe(takeUntilDestroyed(this.destroyRef))

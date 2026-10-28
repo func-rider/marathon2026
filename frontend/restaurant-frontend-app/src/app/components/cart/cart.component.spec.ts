@@ -125,4 +125,29 @@ describe('CartComponent', () => {
       '/reservations',
     ]);
   });
+
+  it('opens the menu in pre-order mode for the selected order reservation', () => {
+    component.orders.set([
+      {
+        orderId: 'order-1',
+        reservationId: 'reservation-1',
+        reservationAddress: '48 Rustaveli Avenue',
+        reservationTime: 'Oct 17, 2026, 12:00 - 14:00',
+        orderItems: [],
+        status: 0,
+      },
+    ]);
+    const closeCartSpy = spyOn(component.closeCartEvent, 'emit');
+
+    component.addDishToOrder('order-1');
+
+    expect(closeCartSpy).toHaveBeenCalled();
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/menu'], {
+      queryParams: {
+        preOrder: 'true',
+        reservationId: 'reservation-1',
+        reservationLabel: '48 Rustaveli Avenue, Oct 17, 2026, 12:00 - 14:00',
+      },
+    });
+  });
 });

@@ -7,19 +7,24 @@
       <button class="card-action" type="button" disabled>Edit my Pre-Order</button>
     } @else {
       <h2 class="participant-title">{{ title() }}</h2>
-      <button
-        class="card-action"
-        type="button"
-        [disabled]="!canRemove()"
-        [attr.aria-label]="'Remove ' + participant().name + ' from group'"
-        (click)="removeRequested.emit(participant())"
-      >
-        Remove Guest
-      </button>
+      @if (canRemove()) {
+        <button
+          class="card-action"
+          type="button"
+          [attr.aria-label]="'Remove ' + participant().name"
+          (click)="removeClick.emit(participant())"
+        >
+          Remove Guest
+        </button>
+      }
     }
   </header>
 
-  <span class="visually-hidden" role="status">
+  <span
+    class="status-chip"
+    [class.status-chip--submitted]="participant().isSubmitted"
+    role="status"
+  >
     {{ participant().isSubmitted ? 'Submitted' : 'Still choosing' }}
   </span>
 
@@ -27,23 +32,14 @@
     <ul class="items" [attr.aria-label]="title() + ' dishes'">
       @for (item of participant().items; track item.dish.id) {
         <li class="item">
-          <button
-            class="remove-item"
-            type="button"
-            disabled
-            [attr.aria-label]="'Remove ' + item.dish.name"
-          >
-            <img src="assets/svg/trash.svg" alt="" aria-hidden="true" />
-          </button>
-
           <div class="dish-info">
             @if (item.dish.imageUrl) {
               <img
                 class="dish-image"
                 [src]="item.dish.imageUrl"
                 alt=""
-                width="48"
-                height="48"
+                width="40"
+                height="40"
                 loading="lazy"
               />
             } @else {
@@ -54,11 +50,17 @@
 
             <span class="dish-copy">
               <span class="dish-name">{{ item.dish.name }}</span>
-              @if (item.note) {
-                <span class="dish-note">{{ item.note }}</span>
-              }
             </span>
           </div>
+
+          <button
+            class="remove-item"
+            type="button"
+            disabled
+            [attr.aria-label]="'Remove ' + item.dish.name"
+          >
+            <img src="assets/svg/trash.svg" alt="" aria-hidden="true" />
+          </button>
 
           <div
             class="quantity-stepper"
@@ -75,7 +77,7 @@
           }
 
           <span class="line-price">
-            {{ item.dish.price * item.quantity | currency: 'USD' : 'symbol' : '1.0-2' }}
+            {{ item.dish.price * item.quantity | currency: 'USD' : 'symbol' : '1.2-2' }}
           </span>
         </li>
       }
@@ -86,6 +88,6 @@
 
   <p class="subtotal">
     <span>Subtotal</span>
-    <span>{{ participant().total | currency: 'USD' : 'symbol' : '1.0-2' }}</span>
+    <span>{{ participant().total | currency: 'USD' : 'symbol' : '1.2-2' }}</span>
   </p>
 </article>

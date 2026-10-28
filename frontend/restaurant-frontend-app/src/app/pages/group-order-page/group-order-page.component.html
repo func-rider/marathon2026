@@ -1,24 +1,19 @@
 <main class="group-order-backdrop">
-  <section
-    class="group-order-panel"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="group-order-title"
-  >
+  <section class="group-order-panel" aria-labelledby="group-order-title">
     <header class="panel-header">
       <div class="title-row">
         <div class="title-with-status">
           <h1 id="group-order-title">Group Pre-Order</h1>
-          @if (groupOrder()) {
+          @if (groupStatus()) {
             <span class="order-status">{{ orderStatusLabel() }}</span>
           }
         </div>
-        <a class="close-link" routerLink="/reservations" aria-label="Close group pre-order">
+        <a class="close-link" href="/reservations" aria-label="Close group pre-order">
           <img src="assets/svg/close.svg" alt="" aria-hidden="true" />
         </a>
       </div>
 
-      @if (groupOrder(); as data) {
+      @if (invite(); as reservation) {
         <dl class="reservation-details">
           <div class="detail-item">
             <dt class="visually-hidden">Location</dt>
@@ -26,7 +21,7 @@
               <span class="detail-icon" aria-hidden="true">
                 <img class="detail-icon--large" src="assets/svg/location-green.svg" alt="" />
               </span>
-              {{ data.invite.LocationAddress }}
+              {{ reservation.LocationAddress }}
             </dd>
           </div>
 
@@ -36,7 +31,7 @@
               <span class="detail-icon" aria-hidden="true">
                 <img src="assets/svg/calendar-green.svg" alt="" />
               </span>
-              {{ data.invite.StartTime | date: 'mediumDate' }}
+              {{ reservation.StartTime | date: 'mediumDate' }}
             </dd>
           </div>
 
@@ -46,8 +41,8 @@
               <span class="detail-icon" aria-hidden="true">
                 <img src="assets/svg/clock-green.svg" alt="" />
               </span>
-              {{ data.invite.StartTime | date: 'HH:mm' }} -
-              {{ data.invite.EndTime | date: 'HH:mm' }}
+              {{ reservation.StartTime | date: 'HH:mm' }} -
+              {{ reservation.EndTime | date: 'HH:mm' }}
             </dd>
           </div>
 
@@ -62,51 +57,82 @@
           </div>
         </dl>
       }
+
+      @if (updatedAt(); as updateTime) {
+        <div class="sync-controls">
+          <span class="updated-at">Updated at {{ updateTime | date: 'HH:mm:ss' }}</span>
+          @if (groupStatus()?.status === 'Open') {
+            <button class="retry-button refresh-button" type="button" (click)="refreshNow()">
+              Refresh
+            </button>
+          }
+        </div>
+      }
+      @if (refreshError(); as message) {
+        <p class="refresh-error" role="status" aria-live="polite">{{ message }}</p>
+      }
     </header>
 
     @if (isLoading()) {
       <section class="load-state" role="status" aria-live="polite">
         Loading group pre-order...
       </section>
-    } @else if (loadError()) {
+    } @else if (loadError(); as message) {
       <section class="load-state load-state--error" role="alert">
-        <p>{{ loadError() }}</p>
+        <p>{{ message }}</p>
         <button class="retry-button" type="button" (click)="loadGroupOrder()">Try again</button>
       </section>
-    } @else if (groupOrder(); as data) {
-      <section class="participants-section" aria-label="Participants">
+    } @else if (groupStatus()) {
+      <section class="participants-section" aria-label="Group pre-order details">
+        @if (pendingGuestMessage(); as warning) {
+          <p class="warning-banner" role="status">{{ warning }}</p>
+        }
+
+        @if (removeSuccess(); as message) {
+          <p class="remove-success" role="status" aria-live="polite">{{ message }}</p>
+        }
+
+        <section class="consolidated-order" aria-label="Consolidated pre-order">
+          <h2>Consolidated pre-order</h2>
+          @if (consolidatedOrder().items.length > 0) {
+            <ul class="consolidated-items">
+              @for (item of consolidatedOrder().items; track item.dish.id) {
+                <li>
+                  <span>{{ item.dish.name }} × {{ item.quantity }}</span>
+                  <span>{{ item.dish.price * item.quantity | currency: 'USD' : 'symbol' : '1.2-2' }}</span>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="empty-state">Participants haven't added any dishes yet</p>
+          }
+        </section>
+
         <ul class="participants">
           @for (participant of participants(); track participant.id) {
             <li class="participant-item">
               <app-participant-card
                 [participant]="participant"
-                [canRemove]="participant.type === 'Guest' && !isRemoving()"
-                (removeRequested)="openRemoveConfirmation($event)"
+                [isMe]="participant.id === ownerSessionId()"
+                [canRemove]="participant.type === 'Guest' && canRemoveGuests() && !isRemoving()"
+                (removeClick)="openRemoveConfirmation($event)"
               />
             </li>
           }
         </ul>
-        @if (removeSuccess()) {
-          <p class="remove-success" role="status" aria-live="polite">{{ removeSuccess() }}</p>
-        }
       </section>
 
       <footer class="panel-footer">
         <p class="grand-total">
           <span>Grand Total</span>
-          <span>{{ data.sessions.total | currency: 'USD' : 'symbol' : '1.0-2' }}</span>
+          <span>{{ consolidatedOrder().total | currency: 'USD' : 'symbol' : '1.2-2' }}</span>
         </p>
-        @if (submitSuccess()) {
-          <p class="submit-success" role="status">Group pre-order sent to the restaurant.</p>
-        } @else if (data.status === 'Open') {
-          @if (submitReadinessMessage(); as message) {
-            <p class="submit-hint">{{ message }}</p>
-          }
+        @if (groupStatus()?.status === 'Open') {
           <button
             class="submit-button"
             type="button"
             [disabled]="!canSubmit()"
-            (click)="openSubmitConfirmation()"
+            (click)="openSubmitDialog()"
           >
             Submit Pre-Order
           </button>
@@ -116,33 +142,25 @@
       </footer>
     }
 
-    @if (isSubmitConfirmationOpen()) {
-      <dialog
-        #submitDialog
-        class="submit-confirmation"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="submit-confirmation-title"
-        aria-describedby="submit-confirmation-description"
-        (cancel)="handleSubmitDialogCancel($event)"
+    @if (isSubmitDialogOpen()) {
+      <app-modal
+        title="Submit group pre-order?"
+        [closeOnBackdrop]="!isSubmitting()"
+        (closed)="closeSubmitDialog()"
       >
-        <h2 id="submit-confirmation-title">Submit group pre-order?</h2>
-        <p id="submit-confirmation-description">
-          This sends {{ submittedGuestCount() }} submitted guest
-          {{ submittedGuestCount() === 1 ? 'order' : 'orders' }} to the restaurant. Unsubmitted
-          guest carts will not be included, and the reservation order will be replaced with the
-          submitted guest dishes.
+        <p>
+          This sends {{ consolidatedOrder().items.length }} consolidated dishes to the restaurant.
+          Unsubmitted guest carts won't be included.
         </p>
-        @if (submitError()) {
-          <p class="submit-error" role="alert">{{ submitError() }}</p>
+        @if (submitError(); as message) {
+          <p class="submit-error" role="alert">{{ message }}</p>
         }
-        <div class="confirmation-actions">
+        <div modal-actions class="confirmation-actions">
           <button
             class="retry-button"
             type="button"
-            autofocus
             [disabled]="isSubmitting()"
-            (click)="cancelSubmitConfirmation()"
+            (click)="closeSubmitDialog()"
           >
             Cancel
           </button>
@@ -152,39 +170,31 @@
             [disabled]="isSubmitting()"
             (click)="confirmGroupOrderSubmission()"
           >
-            {{ isSubmitting() ? 'Sending...' : 'Confirm & Send' }}
+            {{ isSubmitting() ? 'Submitting…' : 'Submit' }}
           </button>
         </div>
-      </dialog>
+      </app-modal>
     }
 
     @if (pendingRemoval(); as guest) {
-      <dialog
-        #removeDialog
-        class="submit-confirmation"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="remove-confirmation-title"
-        aria-describedby="remove-confirmation-description"
-        (cancel)="handleRemoveDialogCancel($event)"
+      <app-modal
+        title="Remove Guest"
+        [closeOnBackdrop]="!isRemoving()"
+        (closed)="closeRemoveConfirmation()"
       >
-        <h2 id="remove-confirmation-title">Remove {{ guest.name }} from the group?</h2>
-        <p id="remove-confirmation-description">
-          This permanently removes {{ guest.name }} and their guest session from this group.
-          @if (groupOrder()?.status === 'Submitted') {
-            The order already sent to the restaurant will remain unchanged.
-          }
+        <p>
+          Are you sure you want to remove {{ guest.name }} and their pre-order from this
+          reservation? This action cannot be undone.
         </p>
-        @if (removeError()) {
-          <p class="submit-error" role="alert">{{ removeError() }}</p>
+        @if (removeError(); as message) {
+          <p class="submit-error" role="alert">{{ message }}</p>
         }
-        <div class="confirmation-actions">
+        <div modal-actions class="confirmation-actions">
           <button
             class="retry-button"
             type="button"
-            autofocus
             [disabled]="isRemoving()"
-            (click)="cancelRemoveConfirmation()"
+            (click)="closeRemoveConfirmation()"
           >
             Cancel
           </button>
@@ -194,10 +204,10 @@
             [disabled]="isRemoving()"
             (click)="confirmGuestRemoval()"
           >
-            {{ isRemoving() ? 'Removing...' : 'Remove Guest' }}
+            {{ isRemoving() ? 'Removing…' : 'Remove Guest' }}
           </button>
         </div>
-      </dialog>
+      </app-modal>
     }
   </section>
 </main>

@@ -13,13 +13,14 @@ import { Participant } from '@app/models/group-orders/participant.model';
 })
 export class ParticipantCardComponent {
   readonly participant = input.required<Participant>();
+  readonly isMe = input(false);
   readonly canRemove = input(false);
-  readonly removeRequested = output<Participant>();
+  readonly removeClick = output<Participant>();
 
   readonly title = computed(() => {
     const person = this.participant();
     return `${person.type}: ${person.name}`;
   });
 
-  readonly isOwner = computed(() => this.participant().type === 'Owner');
+  readonly isOwner = computed(() => this.isMe() || this.participant().type === 'Owner');
 }

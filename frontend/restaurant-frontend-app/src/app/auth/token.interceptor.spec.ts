@@ -60,4 +60,17 @@ describe('tokenInterceptor', () => {
     expect(toastService.error).not.toHaveBeenCalled();
     expect(receivedStatus).toBe(400);
   });
+
+  it('honors SKIP_ERROR_TOAST for guest requests used by background sync', () => {
+    const guestUrl = `${URL}/guest/groups/group-1/sessions`;
+    http
+      .get(guestUrl, { context: new HttpContext().set(SKIP_ERROR_TOAST, true) })
+      .subscribe({ error: () => undefined });
+
+    httpMock
+      .expectOne(guestUrl)
+      .flush({ message: 'Temporary failure' }, { status: 500, statusText: 'Server Error' });
+
+    expect(toastService.error).not.toHaveBeenCalled();
+  });
 });

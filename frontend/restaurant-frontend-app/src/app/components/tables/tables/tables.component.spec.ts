@@ -1,8 +1,10 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { of, Subject, throwError } from 'rxjs';
+import { AuthenticationService } from '@app/auth/services/authentication.service';
+import { createDemoTokens } from '@app/shared/mocks/auth/demo-auth';
 import { Reservation, ReservationStatus } from '@app/models/reservations/reservation.model';
 import { ReservationService } from '@app/services/reservation/reservation.service';
 import { TableService } from '@app/services/table/table.service';
@@ -30,12 +32,24 @@ describe('ReservationsPageComponent', () => {
   let fixture: ComponentFixture<TablesComponent>;
   let reservationService: jasmine.SpyObj<ReservationService>;
   let toastService: jasmine.SpyObj<ToastService>;
+  let authenticationService: jasmine.SpyObj<AuthenticationService>;
 
   beforeEach(async () => {
     reservationService = jasmine.createSpyObj<ReservationService>('ReservationService', [
       'makeReservation$',
+      'cancelReservation$',
+      'editReservation$',
     ]);
     toastService = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success']);
+    authenticationService = jasmine.createSpyObj<AuthenticationService>(
+      'AuthenticationService',
+      ['getToken', 'getTokens', 'signOut']
+    );
+    authenticationService.getToken.and.returnValue('test-id-token');
+    authenticationService.getTokens.and.returnValue({
+      idToken: 'test-id-token',
+      accessToken: 'test-access-token',
+    });
 
     await TestBed.configureTestingModule({
       providers: [
@@ -45,6 +59,7 @@ describe('ReservationsPageComponent', () => {
         { provide: API_BASE_URL, useValue: 'https://test.api' },
         { provide: ReservationService, useValue: reservationService },
         { provide: ToastService, useValue: toastService },
+        { provide: AuthenticationService, useValue: authenticationService },
       ],
       imports: [TablesComponent],
     }).compileComponents();
@@ -595,5 +610,51 @@ describe('ReservationsPageComponent', () => {
     const element: HTMLElement = fixture.nativeElement;
     expect(element.querySelector('app-reservation-invite-modal')).not.toBeNull();
     expect(element.querySelector('app-reservation-confirmed')).toBeNull();
+  });
+
+  it('redirects signed-out users to login without sending reservation mutations', () => {
+    authenticationService.getToken.and.returnValue(undefined);
+    authenticationService.getTokens.and.returnValue(null);
+    component.reservation = CREATED_RESERVATION;
+    component.selectedFilter.date = 'Oct 17, 2026';
+    reservationService.makeReservation$.and.returnValue(of(CREATED_RESERVATION));
+    reservationService.cancelReservation$.and.returnValue(of({}));
+    reservationService.editReservation$.and.returnValue(of(CREATED_RESERVATION));
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+
+    component.onMakeReservation(
+      'table-1',
+      { start: '2026-10-17T12:00:00Z', end: '2026-10-17T14:00:00Z' },
+      2
+    );
+    component.onCancelReservation();
+    component.onSubmitEditReservation(
+      { start: '2026-10-17T12:00:00Z', end: '2026-10-17T14:00:00Z' },
+      2
+    );
+
+    expect(navigateSpy).toHaveBeenCalledTimes(3);
+    expect(reservationService.makeReservation$).not.toHaveBeenCalled();
+    expect(reservationService.cancelReservation$).not.toHaveBeenCalled();
+    expect(reservationService.editReservation$).not.toHaveBeenCalled();
+  });
+
+  it('clears the demo account and requires real sign-in before booking', () => {
+    const demoTokens = createDemoTokens();
+    authenticationService.getToken.and.returnValue(demoTokens.idToken);
+    authenticationService.getTokens.and.returnValue(demoTokens);
+    const router = TestBed.inject(Router);
+    const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+
+    component.onMakeReservation(
+      'table-1',
+      { start: '2026-10-17T12:00:00Z', end: '2026-10-17T14:00:00Z' },
+      2
+    );
+
+    expect(authenticationService.signOut).toHaveBeenCalled();
+    expect(navigateSpy).toHaveBeenCalledWith(['/login']);
+    expect(reservationService.makeReservation$).not.toHaveBeenCalled();
   });
 });

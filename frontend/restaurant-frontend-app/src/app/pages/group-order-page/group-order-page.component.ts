@@ -4,102 +4,101 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  ElementRef,
   inject,
+  OnDestroy,
   OnInit,
   signal,
-  ViewChild,
 } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import {
+  catchError,
+  EMPTY,
+  exhaustMap,
+  finalize,
+  forkJoin,
+  interval,
+  map,
+  Observable,
+  Subscription,
+  tap,
+} from 'rxjs';
 
 import { ParticipantCardComponent } from '@app/components/group-orders/participant-card/participant-card.component';
-import { GroupOrderPreview } from '@app/models/group-orders/group-order-preview.model';
 import { Participant } from '@app/models/group-orders/participant.model';
-import {
-  GroupSessionsSnapshot,
-  GroupOrderSubmissionResult,
-  GroupOrdersService,
-} from '@app/services/group-orders/group-orders.service';
+import { GroupSessionsResponse } from '@app/models/group-orders/group-sessions-response.model';
+import { GroupStatusResponse } from '@app/models/group-orders/group-status.model';
+import { SubmittedDish } from '@app/models/group-orders/submit-group-pre-order.model';
+import { GuestInvite } from '@app/models/reservations/guest-invite.model';
+import { consolidatePreOrder } from '@app/shared/helpers/consolidate-pre-order';
+import { ModalComponent } from '@app/shared/custom-components/modal/modal.component';
+import { GroupOrdersService } from '@app/services/group-orders/group-orders.service';
+import { ToastService } from '@app/services/toast/toast.service';
+
+const SYNC_INTERVAL_MS = 15_000;
 
 @Component({
   selector: 'app-group-order-page',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, ParticipantCardComponent, RouterLink],
+  imports: [CurrencyPipe, DatePipe, ParticipantCardComponent, ModalComponent],
   templateUrl: './group-order-page.component.html',
   styleUrl: './group-order-page.component.scss',
   changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class GroupOrderPageComponent implements OnInit {
+export class GroupOrderPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly groupOrdersService = inject(GroupOrdersService);
-  private submitDialogElement: HTMLDialogElement | null = null;
-  private removeDialogElement: HTMLDialogElement | null = null;
+  private readonly toastService = inject(ToastService);
+  private pollingSubscription: Subscription | null = null;
 
-  @ViewChild('submitDialog')
-  set submitDialog(ref: ElementRef<HTMLDialogElement> | undefined) {
-    this.submitDialogElement = ref?.nativeElement ?? null;
-    if (
-      this.submitDialogElement &&
-      this.isSubmitConfirmationOpen() &&
-      !this.submitDialogElement.open
-    ) {
-      this.submitDialogElement.showModal();
-    }
-  }
+  readonly reservationId = signal<string | null>(null);
+  readonly invite = signal<GuestInvite | null>(null);
+  readonly groupReservationId = signal<string | null>(null);
+  readonly ownerSessionId = signal<string | null>(null);
+  readonly sessions = signal<GroupSessionsResponse | null>(null);
+  readonly groupStatus = signal<GroupStatusResponse | null>(null);
 
-  @ViewChild('removeDialog')
-  set removeDialog(ref: ElementRef<HTMLDialogElement> | undefined) {
-    this.removeDialogElement = ref?.nativeElement ?? null;
-    if (this.removeDialogElement && this.pendingRemoval() && !this.removeDialogElement.open) {
-      this.removeDialogElement.showModal();
-    }
-  }
-
-  readonly groupOrder = signal<GroupOrderPreview | null>(null);
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);
-  readonly isSubmitConfirmationOpen = signal(false);
+  readonly isRefreshing = signal(false);
+  readonly updatedAt = signal<Date | null>(null);
+  readonly refreshError = signal<string | null>(null);
+
+  readonly isSubmitDialogOpen = signal(false);
   readonly isSubmitting = signal(false);
   readonly submitError = signal<string | null>(null);
   readonly submitSuccess = signal(false);
+
   readonly pendingRemoval = signal<Participant | null>(null);
   readonly isRemoving = signal(false);
   readonly removeError = signal<string | null>(null);
   readonly removeSuccess = signal<string | null>(null);
-  readonly participants = computed(() => this.groupOrder()?.sessions.participants ?? []);
-  readonly submittedGuestCount = computed(
+
+  readonly participants = computed(() => this.sessions()?.participants ?? []);
+  readonly consolidatedOrder = computed(() => consolidatePreOrder(this.participants()));
+  readonly pendingGuestCount = computed(
     () =>
       this.participants().filter(
-        (participant) =>
-          participant.type === 'Guest' && participant.isSubmitted && participant.items.length > 0
+        (participant) => participant.type === 'Guest' && !participant.isSubmitted
       ).length
   );
-  readonly submitReadinessMessage = computed(() => {
-    const groupOrder = this.groupOrder();
-    if (!groupOrder || groupOrder.status !== 'Open') {
+  readonly pendingGuestMessage = computed(() => {
+    const count = this.pendingGuestCount();
+    if (count === 0) {
       return null;
     }
-    if (!groupOrder.hasOwnerOrder) {
-      return 'An owner pre-order is required before you can submit the group order.';
-    }
-    if (this.submittedGuestCount() === 0) {
-      return 'At least one guest must submit dishes before you can send the group order.';
-    }
-    return null;
+    const noun = count === 1 ? 'participant' : 'participants';
+    const verb = count === 1 ? "hasn't" : "haven't";
+    return `${count} ${noun} ${verb} submitted their cart yet — their dishes won't be included in the order`;
   });
-  readonly canSubmit = computed(
-    () =>
-      this.groupOrder()?.status === 'Open' && !this.submitReadinessMessage() && !this.isSubmitting()
-  );
   readonly guestCountLabel = computed(() => {
-    const groupOrder = this.groupOrder();
-    return groupOrder
-      ? `${groupOrder.currentParticipants} of ${groupOrder.invite.MaxGuestCount} guests`
-      : '';
+    const currentCount = this.groupStatus()?.currentParticipants;
+    const maximumCount = this.invite()?.MaxGuestCount;
+    return currentCount === undefined || maximumCount === undefined
+      ? ''
+      : `${currentCount} of ${maximumCount} guests`;
   });
   readonly orderStatusLabel = computed(() => {
-    switch (this.groupOrder()?.status) {
+    switch (this.groupStatus()?.status) {
       case 'Submitted':
         return 'Sent to Restaurant';
       case 'Closed':
@@ -108,66 +107,118 @@ export class GroupOrderPageComponent implements OnInit {
         return 'Collecting pre-orders';
     }
   });
+  readonly canSubmit = computed(
+    () =>
+      this.groupStatus()?.status === 'Open' &&
+      this.consolidatedOrder().items.length > 0 &&
+      !this.isSubmitting()
+  );
+  readonly canRemoveGuests = computed(() => this.groupStatus()?.status === 'Open');
 
   ngOnInit(): void {
     this.loadGroupOrder();
   }
 
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
   loadGroupOrder(): void {
     const reservationId = this.route.snapshot.paramMap.get('reservationId');
-    const groupReservationId =
-      this.route.snapshot.queryParamMap.get('groupReservationId') ?? undefined;
+    this.stopPolling();
+    this.isRefreshing.set(false);
+
     if (!reservationId) {
       this.isLoading.set(false);
       this.loadError.set('Reservation ID is missing from the page URL.');
       return;
     }
 
+    this.reservationId.set(reservationId);
     this.isLoading.set(true);
     this.loadError.set(null);
 
-    this.groupOrdersService.getOwnerGroupOrder$(reservationId, groupReservationId).subscribe({
-      next: (groupOrder) => {
-        this.groupOrder.set(groupOrder);
-        if (!groupReservationId) {
-          void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { groupReservationId: groupOrder.invite.GroupReservationId },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-          });
-        }
-      },
-      error: (error: unknown) => {
-        this.loadError.set(this.toLoadErrorMessage(error));
-        this.isLoading.set(false);
-      },
-      complete: () => this.isLoading.set(false),
-    });
+    this.groupOrdersService
+      .getGroupInvite$(reservationId)
+      .pipe(
+        tap((invite) => {
+          this.invite.set(invite);
+          this.groupReservationId.set(invite.GroupReservationId);
+        }),
+        exhaustMap((invite) =>
+          forkJoin({
+            ownerSessionId: this.groupOrdersService.getOwnerSessionId$(reservationId),
+            sessions: this.groupOrdersService.getSessions$(invite.GroupReservationId),
+            status: this.groupOrdersService.getStatus$(invite.GroupReservationId),
+          })
+        )
+      )
+      .subscribe({
+        next: ({ ownerSessionId, sessions, status }) => {
+          this.ownerSessionId.set(ownerSessionId);
+          this.sessions.set(sessions);
+          this.groupStatus.set(status);
+          this.updatedAt.set(new Date());
+          this.refreshError.set(null);
+          this.isLoading.set(false);
+          if (status.status === 'Open') {
+            this.startPolling();
+          }
+        },
+        error: (error: unknown) => {
+          this.loadError.set(this.toLoadErrorMessage(error));
+          this.isLoading.set(false);
+        },
+      });
   }
 
-  openSubmitConfirmation(): void {
+  refreshNow(): void {
+    this.refreshSnapshot$().subscribe();
+  }
+
+  openSubmitDialog(): void {
     if (!this.canSubmit()) {
       return;
     }
     this.submitError.set(null);
-    this.isSubmitConfirmationOpen.set(true);
+    this.isSubmitDialogOpen.set(true);
   }
 
-  cancelSubmitConfirmation(): void {
+  closeSubmitDialog(): void {
     if (!this.isSubmitting()) {
-      this.closeSubmitConfirmation();
+      this.isSubmitDialogOpen.set(false);
       this.submitError.set(null);
     }
   }
 
-  handleSubmitDialogCancel(event: Event): void {
-    event.preventDefault();
-    this.cancelSubmitConfirmation();
+  confirmGroupOrderSubmission(): void {
+    const groupReservationId = this.groupReservationId();
+    const reservationId = this.reservationId();
+    if (!groupReservationId || !reservationId || !this.canSubmit()) {
+      return;
+    }
+
+    this.isSubmitting.set(true);
+    this.submitError.set(null);
+    this.groupOrdersService.submit$(groupReservationId, reservationId).subscribe({
+      next: (submittedDishes) => {
+        this.applySubmittedDishes(submittedDishes);
+        this.groupStatus.update((status) => (status ? { ...status, status: 'Submitted' } : status));
+        this.submitSuccess.set(true);
+        this.isSubmitDialogOpen.set(false);
+        this.stopPolling();
+        this.toastService.success('Pre-order sent to the restaurant');
+      },
+      error: (error: unknown) => {
+        this.submitError.set(this.toActionErrorMessage(error, 'Unable to submit this pre-order.'));
+        this.isSubmitting.set(false);
+      },
+      complete: () => this.isSubmitting.set(false),
+    });
   }
 
   openRemoveConfirmation(participant: Participant): void {
-    if (participant.type !== 'Guest' || this.isRemoving()) {
+    if (participant.type !== 'Guest' || !this.canRemoveGuests() || this.isRemoving()) {
       return;
     }
     this.removeError.set(null);
@@ -175,206 +226,125 @@ export class GroupOrderPageComponent implements OnInit {
     this.pendingRemoval.set(participant);
   }
 
-  cancelRemoveConfirmation(): void {
-    if (this.isRemoving()) {
-      return;
+  closeRemoveConfirmation(): void {
+    if (!this.isRemoving()) {
+      this.pendingRemoval.set(null);
+      this.removeError.set(null);
     }
-    this.closeRemoveConfirmation();
-    this.removeError.set(null);
-  }
-
-  handleRemoveDialogCancel(event: Event): void {
-    event.preventDefault();
-    this.cancelRemoveConfirmation();
   }
 
   confirmGuestRemoval(): void {
     const participant = this.pendingRemoval();
-    const groupOrder = this.groupOrder();
-    if (!participant || !groupOrder || participant.type !== 'Guest' || this.isRemoving()) {
+    const groupReservationId = this.groupReservationId();
+    if (
+      !participant ||
+      participant.type !== 'Guest' ||
+      !groupReservationId ||
+      !this.canRemoveGuests() ||
+      this.isRemoving()
+    ) {
       return;
     }
 
     this.isRemoving.set(true);
     this.removeError.set(null);
-    this.groupOrdersService
-      .deleteGuestSession$(groupOrder.invite.GroupReservationId, participant.id)
-      .subscribe({
-        next: (snapshot) => {
-          this.groupOrder.set(this.withRemovedGuest(groupOrder, snapshot));
-          this.removeSuccess.set(`${participant.name} was removed from the group.`);
-          this.closeRemoveConfirmation();
-        },
-        error: (error: unknown) => {
-          this.removeError.set(this.toRemoveErrorMessage(error));
-          this.isRemoving.set(false);
-        },
-        complete: () => this.isRemoving.set(false),
-      });
+    this.groupOrdersService.removeSession$(groupReservationId, participant.id).subscribe({
+      next: (sessions) => {
+        this.sessions.set(sessions);
+        this.groupStatus.update((status) =>
+          status
+            ? { ...status, currentParticipants: Math.max(0, status.currentParticipants - 1) }
+            : status
+        );
+        this.updatedAt.set(new Date());
+        this.pendingRemoval.set(null);
+        this.removeSuccess.set(`${participant.name} was removed from the group.`);
+        this.toastService.success(`${participant.name} was removed from the group`);
+      },
+      error: (error: unknown) => {
+        this.removeError.set(this.toActionErrorMessage(error, 'Unable to remove this guest.'));
+        this.isRemoving.set(false);
+      },
+      complete: () => this.isRemoving.set(false),
+    });
   }
 
-  confirmGroupOrderSubmission(): void {
-    const groupOrder = this.groupOrder();
-    const reservationId = this.route.snapshot.paramMap.get('reservationId');
-    if (!groupOrder || !reservationId || !this.canSubmit()) {
+  private startPolling(): void {
+    this.stopPolling();
+    this.pollingSubscription = interval(SYNC_INTERVAL_MS)
+      .pipe(exhaustMap(() => this.refreshSnapshot$()))
+      .subscribe();
+  }
+
+  private stopPolling(): void {
+    this.pollingSubscription?.unsubscribe();
+    this.pollingSubscription = null;
+  }
+
+  private refreshSnapshot$(): Observable<void> {
+    const groupReservationId = this.groupReservationId();
+    if (
+      !groupReservationId ||
+      this.groupStatus()?.status !== 'Open' ||
+      this.isRefreshing() ||
+      this.isLoading()
+    ) {
+      return EMPTY;
+    }
+
+    this.isRefreshing.set(true);
+    return forkJoin({
+      sessions: this.groupOrdersService.getSessions$(groupReservationId, { silent: true }),
+      status: this.groupOrdersService.getStatus$(groupReservationId, { silent: true }),
+    }).pipe(
+      tap(({ sessions, status }) => {
+        this.sessions.set(sessions);
+        this.groupStatus.set(status);
+        this.updatedAt.set(new Date());
+        this.refreshError.set(null);
+        if (status.status !== 'Open') {
+          this.stopPolling();
+        }
+      }),
+      map(() => undefined),
+      catchError(() => {
+        this.refreshError.set("Couldn't refresh. Showing data from the last update.");
+        return EMPTY;
+      }),
+      finalize(() => this.isRefreshing.set(false))
+    );
+  }
+
+  private applySubmittedDishes(submittedDishes: SubmittedDish[]): void {
+    const currentSessions = this.sessions();
+    if (!currentSessions) {
       return;
     }
 
-    this.isSubmitting.set(true);
-    this.submitError.set(null);
-
-    this.groupOrdersService
-      .submitGroupOrder$(reservationId, groupOrder.invite.GroupReservationId)
-      .subscribe({
-        next: (result) => {
-          this.groupOrder.set(this.withSubmittedOrder(groupOrder, result));
-          this.submitSuccess.set(true);
-          this.closeSubmitConfirmation();
-        },
-        error: (error: unknown) => {
-          this.submitError.set(this.toSubmitErrorMessage(error));
-          this.isSubmitting.set(false);
-        },
-        complete: () => this.isSubmitting.set(false),
-      });
-  }
-
-  private closeSubmitConfirmation(): void {
-    if (this.submitDialogElement?.open) {
-      this.submitDialogElement.close();
-    }
-    this.isSubmitConfirmationOpen.set(false);
-  }
-
-  private closeRemoveConfirmation(): void {
-    if (this.removeDialogElement?.open) {
-      this.removeDialogElement.close();
-    }
-    this.pendingRemoval.set(null);
-  }
-
-  private withRemovedGuest(
-    groupOrder: GroupOrderPreview,
-    snapshot: GroupSessionsSnapshot
-  ): GroupOrderPreview {
-    const owner = groupOrder.sessions.participants.find(
-      (participant) => participant.type === 'Owner'
-    );
-    const ownerTotal = owner?.total ?? 0;
-    const participants = [
-      ...(owner ? [owner] : []),
-      ...snapshot.participants.filter((participant) => participant.type === 'Guest'),
-    ];
-
-    return {
-      ...groupOrder,
-      sessions: {
-        participants,
-        total: groupOrder.status === 'Submitted' ? ownerTotal : ownerTotal + snapshot.total,
-      },
-      currentParticipants: Math.max(1, groupOrder.currentParticipants - 1),
-    };
-  }
-
-  private withSubmittedOrder(
-    groupOrder: GroupOrderPreview,
-    result: GroupOrderSubmissionResult
-  ): GroupOrderPreview {
     const dishById = new Map(
-      groupOrder.sessions.participants.flatMap((participant) =>
+      currentSessions.participants.flatMap((participant) =>
         participant.items.map((item) => [item.dish.id, item.dish] as const)
       )
     );
-    const consolidatedItems = result.finalOrder
-      ? result.finalOrder.orderItems.map(({ dish, quantity }) => ({ dish, quantity }))
-      : result.submittedDishes.flatMap(({ dishId, quantity }) => {
-          const dish = dishById.get(dishId);
-          return dish ? [{ dish, quantity }] : [];
-        });
-    const consolidatedTotal = consolidatedItems.reduce(
-      (total, item) => total + item.dish.price * item.quantity,
-      0
-    );
-    const participants = groupOrder.sessions.participants.map((participant) =>
+    const items = submittedDishes.flatMap(({ dishId, quantity }) => {
+      const dish = dishById.get(dishId);
+      return dish ? [{ dish, quantity }] : [];
+    });
+    const total = items.reduce((sum, item) => sum + item.dish.price * item.quantity, 0);
+    const participants = currentSessions.participants.map((participant) =>
       participant.type === 'Owner'
-        ? {
-            ...participant,
-            items: consolidatedItems,
-            total: consolidatedTotal,
-            isSubmitted: true,
-          }
+        ? { ...participant, items, total, isSubmitted: true }
         : participant
     );
-
-    return {
-      ...groupOrder,
-      status: 'Submitted',
-      sessions: { participants, total: consolidatedTotal },
-    };
-  }
-
-  private toSubmitErrorMessage(error: unknown): string {
-    if (error instanceof HttpErrorResponse) {
-      const apiError = error.error as {
-        errorCode?: string;
-        message?: string;
-        error?: string;
-      } | null;
-      if (error.status === 400) {
-        if (apiError?.errorCode === 'GroupReservationSubmitted') {
-          return 'This group pre-order has already been submitted.';
-        }
-        if (apiError?.errorCode === 'GroupReservationExpired') {
-          return 'This group reservation has expired and cannot be submitted.';
-        }
-        return (
-          apiError?.message ??
-          'No submitted guest dishes are ready to send, or this reservation has no owner pre-order.'
-        );
-      }
-      if (error.status === 401) {
-        return 'Your session expired. Sign in again to submit this group pre-order.';
-      }
-      if (error.status === 403) {
-        return 'Only the reservation owner can submit this group pre-order.';
-      }
-      if (error.status === 404) {
-        return apiError?.error ?? 'The reservation or group pre-order could not be found.';
-      }
-      if (error.status === 409) {
-        return 'This group pre-order has already been submitted.';
-      }
-    }
-    return 'Unable to submit this group pre-order. Please try again.';
-  }
-
-  private toRemoveErrorMessage(error: unknown): string {
-    if (error instanceof HttpErrorResponse) {
-      const apiError = error.error as {
-        errorCode?: string;
-        message?: string;
-        error?: string;
-      } | null;
-      if (error.status === 400) {
-        return apiError?.message ?? 'This guest session does not belong to this group.';
-      }
-      if (error.status === 401) {
-        return 'Your session expired. Sign in again to remove this guest.';
-      }
-      if (error.status === 403) {
-        return 'Only the reservation owner can remove a guest from this group.';
-      }
-      if (error.status === 404) {
-        return (
-          apiError?.error ??
-          'This guest session could not be found. Reload the group and try again.'
-        );
-      }
-    }
-    return 'Unable to remove this guest. Please try again.';
+    this.sessions.set({ participants, total });
+    this.updatedAt.set(new Date());
+    this.refreshError.set(null);
   }
 
   private toLoadErrorMessage(error: unknown): string {
+    if (error instanceof HttpErrorResponse && error.status === 404) {
+      return 'Group reservation not found';
+    }
     if (error instanceof HttpErrorResponse && error.status === 401) {
       return 'Please sign in as the reservation owner to view this group pre-order.';
     }
@@ -382,5 +352,16 @@ export class GroupOrderPageComponent implements OnInit {
       return 'Only the reservation owner can view this group pre-order.';
     }
     return 'Unable to load this group pre-order. Please try again.';
+  }
+
+  private toActionErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof HttpErrorResponse) {
+      const response = error.error as { message?: string; error?: string } | string | null;
+      if (typeof response === 'string') {
+        return response;
+      }
+      return response?.message ?? response?.error ?? fallback;
+    }
+    return fallback;
   }
 }
