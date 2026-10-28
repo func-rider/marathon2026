@@ -156,6 +156,21 @@ describe('Рівень 2 · сторінка Owner Review', () => {
       expect(buttonByText(element, 'Submit Pre-Order')).toBeUndefined();
     });
 
+    it('keeps the consolidated total after submit without counting the merged order twice', () => {
+      service.submit$.and.returnValue(of([{ dishId: 'dish1', quantity: 3 }]));
+      const { fixture, element } = create();
+      buttonByText(element, 'Submit Pre-Order')?.click();
+      fixture.detectChanges();
+      buttonByText(element.querySelector('[role="dialog"]')!, 'Submit')?.click();
+      fixture.detectChanges();
+
+      expect(element.querySelector('.consolidated-items li')?.textContent?.trim()).toMatch(
+        /^Caesar Salad.*3\s*\$540\.00$/
+      );
+      expect(element.querySelector('.consolidated-order')?.textContent).toContain('$540.00');
+      expect(element.querySelector('.consolidated-order')?.textContent).not.toContain('$900.00');
+    });
+
     it('помилка submit: екран не ламається, кнопку можна натиснути знову', () => {
       service.submit$.and.returnValue(throwError(() => new HttpErrorResponse({ status: 400 })));
       const { fixture, element } = create();

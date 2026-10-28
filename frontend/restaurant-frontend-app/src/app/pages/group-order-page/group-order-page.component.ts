@@ -29,7 +29,10 @@ import { GroupSessionsResponse } from '@app/models/group-orders/group-sessions-r
 import { GroupStatusResponse } from '@app/models/group-orders/group-status.model';
 import { SubmittedDish } from '@app/models/group-orders/submit-group-pre-order.model';
 import { GuestInvite } from '@app/models/reservations/guest-invite.model';
-import { consolidatePreOrder } from '@app/shared/helpers/consolidate-pre-order';
+import {
+  consolidatePreOrder,
+  type ConsolidatedOrder,
+} from '@app/shared/helpers/consolidate-pre-order';
 import { ModalComponent } from '@app/shared/custom-components/modal/modal.component';
 import { GroupOrdersService } from '@app/services/group-orders/group-orders.service';
 import { ToastService } from '@app/services/toast/toast.service';
@@ -56,6 +59,7 @@ export class GroupOrderPageComponent implements OnInit, OnDestroy {
   readonly ownerSessionId = signal<string | null>(null);
   readonly sessions = signal<GroupSessionsResponse | null>(null);
   readonly groupStatus = signal<GroupStatusResponse | null>(null);
+  private readonly submittedOrder = signal<ConsolidatedOrder | null>(null);
 
   readonly isLoading = signal(true);
   readonly loadError = signal<string | null>(null);
@@ -74,7 +78,9 @@ export class GroupOrderPageComponent implements OnInit, OnDestroy {
   readonly removeSuccess = signal<string | null>(null);
 
   readonly participants = computed(() => this.sessions()?.participants ?? []);
-  readonly consolidatedOrder = computed(() => consolidatePreOrder(this.participants()));
+  readonly consolidatedOrder = computed(
+    () => this.submittedOrder() ?? consolidatePreOrder(this.participants())
+  );
   readonly pendingGuestCount = computed(
     () =>
       this.participants().filter(
@@ -331,12 +337,7 @@ export class GroupOrderPageComponent implements OnInit, OnDestroy {
       return dish ? [{ dish, quantity }] : [];
     });
     const total = items.reduce((sum, item) => sum + item.dish.price * item.quantity, 0);
-    const participants = currentSessions.participants.map((participant) =>
-      participant.type === 'Owner'
-        ? { ...participant, items, total, isSubmitted: true }
-        : participant
-    );
-    this.sessions.set({ participants, total });
+    this.submittedOrder.set({ items, total });
     this.updatedAt.set(new Date());
     this.refreshError.set(null);
   }
