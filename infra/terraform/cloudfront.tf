@@ -1,9 +1,49 @@
+data "aws_api_gateway_rest_api" "backend" {
+  name = local.api_gateway_name
+}
+
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "restaurant-frontend-oac"
   description                       = "OAC for restaurant-frontend S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "api_prefix_rewrite" {
+  name    = "restaurant-frontend-api-prefix-rewrite"
+  runtime = "cloudfront-js-1.0"
+  publish = true
+  comment = "Remove /api before forwarding requests to API Gateway"
+
+  code = <<-JAVASCRIPT
+    function handler(event) {
+      var request = event.request;
+      if (request.uri.indexOf('/api/') === 0) {
+        request.uri = request.uri.substring(4);
+      }
+      return request;
+    }
+  JAVASCRIPT
+}
+
+resource "aws_cloudfront_function" "spa_rewrite" {
+  name    = "restaurant-frontend-spa-rewrite"
+  runtime = "cloudfront-js-1.0"
+  publish = true
+  comment = "Route Angular client-side paths to index.html"
+
+  code = <<-JAVASCRIPT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+      var lastSegment = uri.substring(uri.lastIndexOf('/') + 1);
+      if (lastSegment.indexOf('.') === -1) {
+        request.uri = '/index.html';
+      }
+      return request;
+    }
+  JAVASCRIPT
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
@@ -15,6 +55,21 @@ resource "aws_cloudfront_distribution" "frontend" {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = "s3-frontend"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  origin {
+    domain_name = "${data.aws_api_gateway_rest_api.backend.id}.execute-api.${var.aws_region}.amazonaws.com"
+    origin_id   = "restaurant-backend-api"
+    origin_path = "/develop"
+
+    custom_origin_config {
+      http_port                = 80
+      https_port               = 443
+      origin_protocol_policy   = "https-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 30
+      origin_keepalive_timeout = 5
+    }
   }
 
   default_cache_behavior {
@@ -30,19 +85,27 @@ resource "aws_cloudfront_distribution" "frontend" {
         forward = "none"
       }
     }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_rewrite.arn
+    }
   }
 
-  # Angular SPA client-side routing: any path S3 can't resolve gets index.html.
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
+  ordered_cache_behavior {
+    path_pattern             = "/api/*"
+    target_origin_id         = "restaurant-backend-api"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
 
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.api_prefix_rewrite.arn
+    }
   }
 
   restrictions {

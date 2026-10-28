@@ -162,37 +162,16 @@ Terraform creates and configures everything needed for frontend hosting:
 
 You do not need to configure the bucket manually after `terraform apply`. The manual part is only building the frontend and uploading the files to S3.
 
-### 3.1 Get the backend URL
+### 3.1 Set the backend URL
 
-Use the deployed API Gateway base URL as `BACKEND_URL`. Example:
-
-```text
-https://<api-id>.execute-api.us-west-2.amazonaws.com/develop
-```
-
-The production frontend build will fail unless `BACKEND_URL` is set.
-
-To look it up in AWS:
+The production CloudFront distribution proxies `/api/*` to the existing API Gateway `develop` stage. Build the frontend against the same CloudFront domain so browser requests are same-origin and do not require CORS on the API:
 
 ```powershell
-aws apigateway get-rest-apis --region us-west-2 --query "items[?name=='restaurant-backend-api'].{name:name,id:id}" --output table
+$CLOUDFRONT_DOMAIN = terraform -chdir=infra/terraform output -raw cloudfront_distribution_domain_name
+$env:BACKEND_URL = "https://$CLOUDFRONT_DOMAIN/api"
 ```
 
-Or set variables from AWS CLI:
-
-Windows PowerShell:
-
-```powershell
-$API_ID = aws apigateway get-rest-apis --region us-west-2 --query "items[?name=='restaurant-backend-api'].id | [0]" --output text
-$env:BACKEND_URL = "https://$API_ID.execute-api.us-west-2.amazonaws.com/develop"
-```
-
-Linux or macOS:
-
-```bash
-API_ID=$(aws apigateway get-rest-apis --region us-west-2 --query "items[?name=='restaurant-backend-api'].id | [0]" --output text)
-export BACKEND_URL="https://$API_ID.execute-api.us-west-2.amazonaws.com/develop"
-```
+The production frontend build will fail unless `BACKEND_URL` is set. For local development, the development environment continues to use the API Gateway URL directly.
 
 ### 3.2 Build the production bundle
 

@@ -201,6 +201,24 @@ public class GroupReservationServiceTests
 
     [Theory]
     [AutoData]
+    public async Task GetGroupReservationInviteTokenAsync_GroupReservationMissing_ThrowsNotFound(Reservation reservation)
+    {
+        reservation.Status = ReservationStatus.Reserved;
+        reservation.GuestCount = 2;
+
+        _reservationRepositoryMock
+            .Setup(r => r.GetReservationByIdAsync(reservation.Id))
+            .ReturnsAsync(reservation);
+        _groupReservationRepositoryMock
+            .Setup(r => r.GetByReservationIdAsync(reservation.Id))
+            .ReturnsAsync((GroupReservation?)null);
+
+        await Assert.ThrowsAsync<GroupReservationNotFoundException>(
+            () => _service.GetGroupReservationInviteTokenAsync(reservation.Id));
+    }
+
+    [Theory]
+    [AutoData]
     public async Task GetGroupReservationInviteTokenAsync_OneGuest_ThrowsValidationException(Reservation reservation)
     {
         reservation.Status = ReservationStatus.Reserved;
