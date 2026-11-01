@@ -1,5 +1,6 @@
 using System.Globalization;
 using Restaurant_Aqa_Framework.Api.Dtos.GroupOrders;
+using Restaurant_Aqa_Framework.Api.Dtos.Orders;
 using Restaurant_Aqa_Framework.Screenplay;
 using Restaurant_Aqa_Framework.Screenplay.Questions;
 using Restaurant_Aqa_Framework.Screenplay.Tasks;
@@ -13,6 +14,15 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
 {
     [Given("the owner has created a reservation for a group pre-order")]
     public Task GivenOwnerHasCreatedGroupReservation() => Actor.AttemptsToAsync(new SetUpGroupPreOrder());
+
+    [Given("the waiter has created a reservation for the Owner's group pre-order")]
+    public Task GivenWaiterHasCreatedOwnersGroupReservation() => Actor.AttemptsToAsync(new SetUpGroupPreOrder(createReservationAsWaiter: true));
+
+    [Given("the owner has created an initial pre-order for the group")]
+    public Task GivenOwnerHasCreatedInitialGroupPreOrder() => Actor.AttemptsToAsync(new CreateInitialGroupPreOrder());
+
+    [Given("the owner has submitted the group's consolidated pre-order")]
+    public Task GivenOwnerHasSubmittedGroupPreOrder() => Actor.AttemptsToAsync(new SubmitGroupPreOrder("the owner"));
 
     [Given("guest {string} has joined the invitation with {int} of the featured dish")]
     public Task GivenGuestHasJoinedWithDish(string guestName, int quantity) =>
@@ -30,6 +40,10 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [Scope(Tag = "ui")]
     public Task WhenOwnerOpensGroupPreOrder() => Actor.AttemptsToAsync(new OpenGroupPreOrderForOwner());
 
+    [When("the owner confirms the group pre-order")]
+    [Scope(Tag = "ui")]
+    public Task WhenOwnerConfirmsGroupPreOrder() => Actor.AttemptsToAsync(new SubmitGroupPreOrderThroughUi());
+
     [When("{string} requests the group participant list")]
     [Scope(Tag = "api")]
     public Task WhenViewerRequestsGroupParticipants(string viewer) =>
@@ -39,6 +53,24 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [Scope(Tag = "api")]
     public Task WhenOwnerRequestsMissingGroup() =>
         Actor.AttemptsToAsync(new RequestGroupParticipants("the owner", groupExists: false));
+
+    [When("{string} submits the group pre-order")]
+    [Scope(Tag = "api")]
+    public Task WhenViewerSubmitsGroupPreOrder(string viewer) =>
+        Actor.AttemptsToAsync(new SubmitGroupPreOrder(viewer));
+
+    [When("{string} submits a group that does not exist")]
+    [Scope(Tag = "api")]
+    public Task WhenViewerSubmitsMissingGroup(string viewer) =>
+        Actor.AttemptsToAsync(new SubmitGroupPreOrder(viewer, groupExists: false));
+
+    [When("the waiter requests the confirmed order")]
+    [Scope(Tag = "api")]
+    public Task WhenWaiterRequestsConfirmedOrder() => Actor.AttemptsToAsync(new RequestConfirmedGroupOrder());
+
+    [When("the waiter opens the reservation's confirmed pre-order")]
+    [Scope(Tag = "ui")]
+    public Task WhenWaiterOpensConfirmedOrder() => Actor.AttemptsToAsync(new OpenConfirmedOrderAsWaiter());
 
     [When("guest {string} adds one more serving of the featured dish")]
     public Task WhenGuestAddsOneMoreServing(string guestName) =>
@@ -129,6 +161,77 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
         var page = await Actor.AsksForAsync(new TheGroupOrderScreen());
         await Assert.That(await page.EmptyGroupMessage.IsVisibleAsync()).IsTrue().Because(await page.VisibleTextAsync());
         await Assert.That(await page.GrandTotal.InnerTextAsync()).Contains(Money(0m)).Because(await page.VisibleTextAsync());
+    }
+
+    [Then("the owner sees that the group pre-order was submitted")]
+    [Scope(Tag = "ui")]
+    public async Task ThenOwnerSeesSubmittedGroupPreOrder()
+    {
+        var page = await Actor.AsksForAsync(new TheGroupOrderScreen());
+        await page.SubmittedMessage.WaitForAsync();
+        await Assert.That(await page.SubmittedMessage.IsVisibleAsync()).IsTrue().Because(await page.VisibleTextAsync());
+    }
+
+    [Then("the submitted dishes contain the featured dish with quantity {int}")]
+    [Scope(Tag = "api")]
+    public async Task ThenSubmittedDishesContainFeaturedDish(int quantity)
+    {
+        var fixture = Recall<GroupOrderFixture>();
+        var submitted = Actor.Recall<List<SubmittedDishResponse>>("submitted group dishes");
+        await Assert.That(submitted.Count).IsEqualTo(1).Because($"submitted dishes: {Actor.TheLastResponse().Body}");
+        await Assert.That(submitted[0].DishId).IsEqualTo(fixture.Dish.Id).Because($"submitted dishes: {Actor.TheLastResponse().Body}");
+        await Assert.That(submitted[0].Quantity).IsEqualTo(quantity).Because($"submitted dishes: {Actor.TheLastResponse().Body}");
+    }
+
+    [Then("the waiter sees the featured dish with quantity {int} and status {string}")]
+    [Scope(Tag = "api")]
+    public async Task ThenWaiterSeesConfirmedOrder(int quantity, string status)
+    {
+        var fixture = Recall<GroupOrderFixture>();
+        var order = Actor.Recall<GetOrderResponse>();
+        await Assert.That(order.OrderItems.Count).IsEqualTo(1).Because($"order was {System.Text.Json.JsonSerializer.Serialize(order)}");
+        await Assert.That(order.OrderItems[0].Dish.Id).IsEqualTo(fixture.Dish.Id).Because($"order was {System.Text.Json.JsonSerializer.Serialize(order)}");
+        await Assert.That(order.OrderItems[0].Quantity).IsEqualTo(quantity).Because($"order was {System.Text.Json.JsonSerializer.Serialize(order)}");
+        await Assert.That(order.Status.ToString()).IsEqualTo(status).Because($"order was {System.Text.Json.JsonSerializer.Serialize(order)}");
+    }
+
+    [Then("the waiter sees only the featured dish with quantity {int} in the order")]
+    [Scope(Tag = "ui")]
+    public async Task ThenWaiterSeesOnlyFeaturedDishInUi(int quantity)
+    {
+        var fixture = Recall<GroupOrderFixture>();
+        var page = new WaiterPreOrderPage(Actor.LookingAtThePage());
+        var item = page.DishItem(fixture.Dish.Name);
+        await page.WaitForDishAsync(fixture.Dish.Name);
+        await Assert.That(await page.OrderItems.CountAsync()).IsEqualTo(1).Because(await page.VisibleTextAsync());
+        await Assert.That(await item.IsVisibleAsync()).IsTrue().Because(await page.VisibleTextAsync());
+        await Assert.That(await WaiterPreOrderPage.Quantity(item).InnerTextAsync())
+            .IsEqualTo($"Quantity: {quantity}").Because(await page.VisibleTextAsync());
+    }
+
+    [Then("the group reservation status is {string}")]
+    [Scope(Tag = "api")]
+    public async Task ThenGroupReservationHasStatus(string status)
+    {
+        var group = Actor.Recall<GroupStatusResponse>();
+        await Assert.That(group.Status).IsEqualTo(status).Because($"group status was {group.Status}");
+    }
+
+    [Then("the group pre-order is submitted successfully")]
+    [Scope(Tag = "api")]
+    public async Task ThenGroupPreOrderIsSubmittedSuccessfully()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Succeeded).IsTrue().Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("the group pre-order is rejected with {string}")]
+    [Scope(Tag = "api")]
+    public async Task ThenGroupPreOrderIsRejectedWith(string expectedMessage)
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Succeeded).IsFalse().Because($"the request unexpectedly succeeded: {outcome.Body}");
+        await Assert.That(outcome.ErrorMessage).IsEqualTo(expectedMessage).Because($"response body was: {outcome.Body}");
     }
 
     [Then("the guest {string} cart remains unsubmitted with {int} servings in the response")]

@@ -32,6 +32,15 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
     public ILocator EmptyGroupMessage =>
         Page.GetByText("Participants haven't added any dishes yet", new() { Exact = true });
 
+    public ILocator SubmitPreOrderButton =>
+        Page.GetByRole(AriaRole.Button, new() { Name = "Submit Pre-Order", Exact = true });
+
+    public ILocator ConfirmSubmitButton =>
+        Page.GetByRole(AriaRole.Button, new() { Name = "Submit", Exact = true });
+
+    public ILocator SubmittedMessage =>
+        Page.GetByRole(AriaRole.Status).GetByText("This group pre-order has been submitted.", new() { Exact = true });
+
     public Task NavigateAsync(string reservationId) =>
         NavigateToAsync($"/reservations/{Uri.EscapeDataString(reservationId)}/group-order");
 
@@ -39,6 +48,12 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
 
     public Task RefreshAsync() =>
         Page.GetByRole(AriaRole.Button, new() { Name = "Refresh", Exact = true }).ClickAsync();
+
+    public async Task SubmitPreOrderAsync()
+    {
+        await SubmitPreOrderButton.ClickAsync();
+        await ConfirmSubmitButton.ClickAsync();
+    }
 
     public Task<string> VisibleTextAsync() => Page.Locator(".group-order-panel").InnerTextAsync();
 }

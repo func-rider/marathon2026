@@ -13,14 +13,14 @@ namespace Restaurant_Aqa_Framework.Screenplay.Tasks;
 /// <summary>Creates an Owner, a fresh reservation and invitation, and one available dish for this scenario.
 /// Existing location/table/dish tasks own their own cleanup; the reservation is cancelled after guest sessions
 /// are removed. Cognito users and Owner sessions have no delete endpoint and remain marked with the AQA prefix.</summary>
-public sealed class SetUpGroupPreOrder : ITask
+public sealed class SetUpGroupPreOrder(bool createReservationAsWaiter = false) : ITask
 {
     private const string LocationName = "group pre-order location";
 
     public async Task PerformAsAsync(Actor actor)
     {
         // Fail before creating anything when this clone has no cleanup-capable Waiter account configured.
-        _ = await actor.AsksForAsync(new TheWaiterSession());
+        var waiter = await actor.AsksForAsync(new TheWaiterSession());
 
         await actor.AttemptsToAsync(
             new SetUpLocation(name: LocationName),
@@ -39,10 +39,15 @@ public sealed class SetUpGroupPreOrder : ITask
         var table = actor.Recall<TableResponse>();
         var reservationApi = new ReservationsApi(actor.UsingTheApi());
         var startTime = DateTime.UtcNow.AddHours(2);
+        var reservationRequest = SampleDataFactory.CreateReservationRequest(table.Id, startTime, guestCount: 5) with
+        {
+            CustomerEmail = createReservationAsWaiter ? owner.Email : null,
+        };
         await CaptureAndRequireSuccessAsync(
             actor,
             await reservationApi.CreateReservationAsync(
-                SampleDataFactory.CreateReservationRequest(table.Id, startTime, guestCount: 5), ownerToken),
+                reservationRequest,
+                createReservationAsWaiter ? waiter.IdToken : ownerToken),
             "Creating the Owner's reservation");
         var reservation = actor.TheLastResponse().Json<ReservationResponse>();
 
