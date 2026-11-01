@@ -4,6 +4,12 @@ End-to-end tests for the Green & Tasty restaurant application: Reqnroll (Gherkin
 
 Guidance for extending the suite (writing Gherkin, steps, Screenplay, test data, working with an AI assistant) is in [CLAUDE.md](CLAUDE.md).
 
+## Current assignment coverage: Direction 1, Level 1
+
+[`Features/GroupPreOrder.feature`](Features/GroupPreOrder.feature) covers Owner review of group pre-order participants. The `@ui` scenarios check the Owner's participant cards, dishes, quantities, cart states, subtotals, and empty-group state; the `@api` scenarios check the all-participant total, cart updates, empty groups, Owner-only access, and missing groups. Setup creates scenario-owned records through the API, while the main review is opened through the Owner's UI sign-in. Group review requires a configured `WAITER_USERNAME` / `WAITER_PASSWORD` to seed and clean up its location, table, and dish.
+
+The UI case where an unsubmitted cart should contribute to the group total is marked `@known-defect`: the current Owner page calculates its displayed total from submitted carts only. The framework deletes guest sessions, cancels the reservation, and removes the seeded location, table, and dish after each scenario. Cancellation closes the group reservation but does not delete its record. The API also has no delete operation for Cognito customer accounts or Owner sessions, so these remaining records use unique `AQA-Sample-` data and cannot currently be removed by the suite.
+
 ## Run the tests
 
 ```bash
@@ -11,6 +17,9 @@ cp .env.example .env        # then fill in your own values (see "Configuration")
 dotnet build
 dotnet run --no-build -- --report-trx                          # everything
 dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=smoke]"   # by tag
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=level-1]" # group pre-order Level 1
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=api]"     # API scenarios
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=ui]"      # UI scenarios
 ```
 
 Everything a run produces lands in `TestResults/`: the TUnit report and TRX, the Reqnroll report in `reqnroll/`, and Playwright traces in `traces/` (open one with `npx playwright show-trace <file>.zip`).
