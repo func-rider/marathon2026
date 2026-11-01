@@ -54,8 +54,8 @@ public sealed class GroupOrdersApi(IAPIRequestContext api) : ApiClientBase(api)
         });
 
     public Task<IAPIResponse> DeleteGuestSessionAsync(
-        string groupReservationId, string guestSessionId, string ownerToken) =>
+        string groupReservationId, string guestSessionId, string? bearerToken) =>
         DeleteAsync(
             Url($"/guest/groups/{Uri.EscapeDataString(groupReservationId)}/sessions/{Uri.EscapeDataString(guestSessionId)}"),
-            new APIRequestContextOptions { Headers = Headers(ownerToken) });
+            new APIRequestContextOptions { Headers = Headers(bearerToken) });
 }

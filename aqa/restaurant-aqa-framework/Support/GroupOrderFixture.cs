@@ -16,5 +16,8 @@ public sealed record GuestSessionFixture(
     string GuestName,
     string SessionId,
     string SessionToken,
+    string GroupReservationId,
     int DishQuantity,
-    bool IsSubmitted);
+    bool IsSubmitted,
+    bool IsRemoved = false,
+    IReadOnlyDictionary<string, int>? AdditionalDishes = null);

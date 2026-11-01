@@ -41,6 +41,15 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
     public ILocator SubmittedMessage =>
         Page.GetByRole(AriaRole.Status).GetByText("This group pre-order has been submitted.", new() { Exact = true });
 
+    public ILocator RemovalSuccessMessage(string guestName) =>
+        Page.GetByRole(AriaRole.Status).GetByText($"{guestName} was removed from the group.", new() { Exact = true });
+
+    public ILocator RemoveConfirmationDialog =>
+        Page.GetByRole(AriaRole.Dialog, new() { Name = "Remove Guest", Exact = true });
+
+    public ILocator ConfirmRemoveGuestButton =>
+        RemoveConfirmationDialog.GetByRole(AriaRole.Button, new() { Name = "Remove Guest", Exact = true });
+
     public Task NavigateAsync(string reservationId) =>
         NavigateToAsync($"/reservations/{Uri.EscapeDataString(reservationId)}/group-order");
 
@@ -53,6 +62,14 @@ public sealed class GroupOrderPage(IPage page) : BasePage(page)
     {
         await SubmitPreOrderButton.ClickAsync();
         await ConfirmSubmitButton.ClickAsync();
+    }
+
+    public async Task RemoveGuestAsync(string guestName)
+    {
+        var participant = ParticipantCard(guestName);
+        await participant.GetByRole(AriaRole.Button, new() { Name = $"Remove {guestName}", Exact = true }).ClickAsync();
+        await ConfirmRemoveGuestButton.ClickAsync();
+        await participant.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
     }
 
     public Task<string> VisibleTextAsync() => Page.Locator(".group-order-panel").InnerTextAsync();

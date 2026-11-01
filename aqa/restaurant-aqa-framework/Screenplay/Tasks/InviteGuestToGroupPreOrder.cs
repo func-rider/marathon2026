@@ -9,14 +9,22 @@ namespace Restaurant_Aqa_Framework.Screenplay.Tasks;
 
 /// <summary>Accepts the scenario's invitation as a guest, optionally adds the seeded dish, and optionally submits
 /// the cart. New sessions are registered for Owner cleanup immediately after creation succeeds.</summary>
-public sealed class InviteGuestToGroupPreOrder(string guestName, int dishQuantity = 0, bool submitCart = false) : ITask
+public sealed class InviteGuestToGroupPreOrder(
+    string guestName,
+    int dishQuantity = 0,
+    bool submitCart = false,
+    string groupFixtureName = "primary group",
+    string? dishFixtureName = null) : ITask
 {
     public async Task PerformAsAsync(Actor actor)
     {
         if (dishQuantity < 0)
             throw new InvalidOperationException("Dish quantity cannot be negative.");
 
-        var fixture = actor.Recall<GroupOrderFixture>();
+        var fixture = actor.Recall<GroupOrderFixture>(groupFixtureName);
+        var dish = dishFixtureName is null
+            ? fixture.Dish
+            : actor.Recall<Restaurant_Aqa_Framework.Api.Dtos.Dishes.DishResponse>(dishFixtureName);
         var api = new GroupOrdersApi(actor.UsingTheApi());
         var displayName = $"{SampleDataFactory.Prefix}{guestName}-{Guid.NewGuid():N}";
         await CaptureAndRequireSuccessAsync(
@@ -26,23 +34,32 @@ public sealed class InviteGuestToGroupPreOrder(string guestName, int dishQuantit
             $"Joining the group as {guestName}");
 
         var created = actor.TheLastResponse().Json<CreateGuestSessionResponse>();
-        actor.Recall<CleanupScope>().TrackDelete(
+        var cleanup = actor.Recall<CleanupScope>().TrackDelete(
             $"guest session:{displayName}",
             () => api.DeleteGuestSessionAsync(
                 fixture.Invitation.GroupReservationId,
                 created.SessionId,
                 fixture.OwnerIdToken));
+        actor.Remember($"guest cleanup:{guestName}", cleanup);
 
-        var guest = new GuestSessionFixture(displayName, created.SessionId, created.SessionToken, 0, false);
+        var guest = new GuestSessionFixture(
+            displayName,
+            created.SessionId,
+            created.SessionToken,
+            fixture.Invitation.GroupReservationId,
+            0,
+            false);
         actor.Remember(guestName, guest);
 
         if (dishQuantity > 0)
         {
             await CaptureAndRequireSuccessAsync(
                 actor,
-                await api.AddDishAsync(created.SessionId, fixture.Dish.Id, dishQuantity, created.SessionToken),
+                await api.AddDishAsync(created.SessionId, dish.Id, dishQuantity, created.SessionToken),
                 $"Adding dishes to {guestName}'s cart");
-            guest = guest with { DishQuantity = dishQuantity };
+            guest = dishFixtureName is null
+                ? guest with { DishQuantity = dishQuantity }
+                : guest with { AdditionalDishes = new Dictionary<string, int> { [dish.Id] = dishQuantity } };
             actor.Remember(guestName, guest);
         }
 

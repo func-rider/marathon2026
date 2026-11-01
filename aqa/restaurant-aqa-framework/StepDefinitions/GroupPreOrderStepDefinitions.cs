@@ -18,6 +18,13 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [Given("the waiter has created a reservation for the Owner's group pre-order")]
     public Task GivenWaiterHasCreatedOwnersGroupReservation() => Actor.AttemptsToAsync(new SetUpGroupPreOrder(createReservationAsWaiter: true));
 
+    [Given("another owner has created a separate group pre-order")]
+    public Task GivenAnotherOwnerHasCreatedSeparateGroup() =>
+        Actor.AttemptsToAsync(new SetUpGroupPreOrder(locationName: "second group location", fixtureName: "second group"));
+
+    [Given("a separate dish has been added for the removed guest")]
+    public Task GivenSeparateDishForRemovedGuest() => Actor.AttemptsToAsync(new CreateSeparateGroupDish());
+
     [Given("the owner has created an initial pre-order for the group")]
     public Task GivenOwnerHasCreatedInitialGroupPreOrder() => Actor.AttemptsToAsync(new CreateInitialGroupPreOrder());
 
@@ -32,6 +39,21 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     public Task GivenGuestHasJoinedAndSubmitted(string guestName, int quantity) =>
         Actor.AttemptsToAsync(new InviteGuestToGroupPreOrder(guestName, quantity, submitCart: true));
 
+    [Given("guest {string} has joined the invitation and submitted {int} of the separate dish")]
+    public Task GivenGuestJoinedAndSubmittedSeparateDish(string guestName, int quantity) =>
+        Actor.AttemptsToAsync(new InviteGuestToGroupPreOrder(
+            guestName,
+            quantity,
+            submitCart: true,
+            dishFixtureName: "removed participant dish"));
+
+    [Given("guest {string} has joined the separate group with {int} of its featured dish")]
+    public Task GivenGuestJoinedSeparateGroup(string guestName, int quantity) =>
+        Actor.AttemptsToAsync(new InviteGuestToGroupPreOrder(
+            guestName,
+            quantity,
+            groupFixtureName: "second group"));
+
     [Given("guest {string} has joined the invitation without choosing dishes")]
     public Task GivenGuestHasJoinedWithoutDishes(string guestName) =>
         Actor.AttemptsToAsync(new InviteGuestToGroupPreOrder(guestName));
@@ -43,6 +65,33 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     [When("the owner confirms the group pre-order")]
     [Scope(Tag = "ui")]
     public Task WhenOwnerConfirmsGroupPreOrder() => Actor.AttemptsToAsync(new SubmitGroupPreOrderThroughUi());
+
+    [When("the owner removes guest {string} from the group")]
+    [Scope(Tag = "ui")]
+    public Task WhenOwnerRemovesGuestThroughUi(string guestName) =>
+        Actor.AttemptsToAsync(new RemoveGroupParticipantThroughUi(guestName));
+
+    [When("the owner removes guest {string} from the group")]
+    [Scope(Tag = "api")]
+    public Task WhenOwnerRemovesGuestThroughApi(string guestName) =>
+        Actor.AttemptsToAsync(new DeleteGroupParticipant(guestName));
+
+    [When("the owner attempts to remove the second group's guest from their group")]
+    [Scope(Tag = "api")]
+    public Task WhenOwnerAttemptsCrossGroupRemoval() =>
+        Actor.AttemptsToAsync(new DeleteGroupParticipant(
+            "ForeignGuest",
+            participantMustBelongToAnotherGroup: true));
+
+    [When("the owner tries to remove a participant that does not exist")]
+    [Scope(Tag = "api")]
+    public Task WhenOwnerRemovesMissingGuest() =>
+        Actor.AttemptsToAsync(new DeleteGroupParticipant("MissingGuest", participantExists: false));
+
+    [When("another customer tries to remove guest {string}")]
+    [Scope(Tag = "api")]
+    public Task WhenAnotherCustomerTriesRemovingGuest(string guestName) =>
+        Actor.AttemptsToAsync(new DeleteGroupParticipant(guestName, viewer: "another customer"));
 
     [When("{string} requests the group participant list")]
     [Scope(Tag = "api")]
@@ -102,6 +151,29 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
             .Contains(Money(fixture.Dish.Price * quantity)).Because(await card.InnerTextAsync());
     }
 
+    [Then("the owner sees guest {string} with {int} serving of the separate dish")]
+    [Scope(Tag = "ui")]
+    public async Task ThenOwnerSeesSeparateDish(string guestName, int quantity)
+    {
+        var guest = Recall<GuestSessionFixture>(guestName);
+        var dish = Actor.Recall<Restaurant_Aqa_Framework.Api.Dtos.Dishes.DishResponse>("removed participant dish");
+        var page = await Actor.AsksForAsync(new TheGroupOrderScreen());
+        var card = page.ParticipantCard(guest.GuestName);
+        await Assert.That(await card.IsVisibleAsync()).IsTrue().Because(await page.VisibleTextAsync());
+        await Assert.That(await GroupOrderPage.Dish(card, dish.Name).IsVisibleAsync()).IsTrue().Because(await card.InnerTextAsync());
+        await Assert.That(await GroupOrderPage.Quantity(card, quantity).IsVisibleAsync()).IsTrue().Because(await card.InnerTextAsync());
+    }
+
+    [Then("guest {string} is no longer listed in the group pre-order")]
+    [Scope(Tag = "ui")]
+    public async Task ThenGuestIsRemovedFromUi(string guestName)
+    {
+        var guest = Recall<GuestSessionFixture>(guestName);
+        var page = await Actor.AsksForAsync(new TheGroupOrderScreen());
+        await Assert.That(await page.ParticipantCard(guest.GuestName).IsVisibleAsync()).IsFalse()
+            .Because(await page.VisibleTextAsync());
+    }
+
     [Then("guest {string} is marked as {string}")]
     [Scope(Tag = "ui")]
     public async Task ThenGuestHasStatus(string guestName, string status)
@@ -149,8 +221,7 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     public async Task ThenUiGroupTotalEqualsAllGuestSubtotals()
     {
         var page = await Actor.AsksForAsync(new TheGroupOrderScreen());
-        var expected = CurrentGuests()
-            .Sum(guest => Recall<GroupOrderFixture>().Dish.Price * guest.DishQuantity);
+        var expected = CurrentGuests().Sum(GuestSubtotal);
         await Assert.That(await page.GrandTotal.InnerTextAsync()).Contains(Money(expected)).Because(await page.VisibleTextAsync());
     }
 
@@ -209,6 +280,15 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
             .IsEqualTo($"Quantity: {quantity}").Because(await page.VisibleTextAsync());
     }
 
+    [Then("the waiter's order does not contain the removed guest's dish")]
+    [Scope(Tag = "ui")]
+    public async Task ThenWaiterDoesNotSeeRemovedDish()
+    {
+        var dish = Actor.Recall<Restaurant_Aqa_Framework.Api.Dtos.Dishes.DishResponse>("removed participant dish");
+        var page = new WaiterPreOrderPage(Actor.LookingAtThePage());
+        await Assert.That(await page.DishItem(dish.Name).CountAsync()).IsEqualTo(0).Because(await page.VisibleTextAsync());
+    }
+
     [Then("the group reservation status is {string}")]
     [Scope(Tag = "api")]
     public async Task ThenGroupReservationHasStatus(string status)
@@ -232,6 +312,37 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
         var outcome = await Actor.AsksForAsync(new TheOutcome());
         await Assert.That(outcome.Succeeded).IsFalse().Because($"the request unexpectedly succeeded: {outcome.Body}");
         await Assert.That(outcome.ErrorMessage).IsEqualTo(expectedMessage).Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("deleting a participant from another group is rejected")]
+    [Scope(Tag = "api")]
+    public async Task ThenCrossGroupRemovalIsRejected()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(400).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.ErrorMessage).IsEqualTo("Guest session does not belong to this group reservation.")
+            .Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("deletion reports the guest session was not found")]
+    [Scope(Tag = "api")]
+    public async Task ThenGuestSessionIsNotFound()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(404).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.ErrorMessage)
+            .IsEqualTo("Guest session with id AQA-Sample-missing-guest-session not found.")
+            .Because($"response body was: {outcome.Body}");
+    }
+
+    [Then("deletion is denied because the requester is not the Owner")]
+    [Scope(Tag = "api")]
+    public async Task ThenDeletionIsDeniedForNonOwner()
+    {
+        var outcome = await Actor.AsksForAsync(new TheOutcome());
+        await Assert.That(outcome.Status).IsEqualTo(403).Because($"response body was: {outcome.Body}");
+        await Assert.That(outcome.ErrorMessage).IsEqualTo("Only the reservation owner can perform this action.")
+            .Because($"response body was: {outcome.Body}");
     }
 
     [Then("the guest {string} cart remains unsubmitted with {int} servings in the response")]
@@ -316,6 +427,22 @@ public sealed class GroupPreOrderStepDefinitions(Actor actor) : StepDefinitionBa
     private static string Money(decimal amount) =>
         $"${amount.ToString("0.00", CultureInfo.InvariantCulture)}";
 
-    private IEnumerable<GuestSessionFixture> CurrentGuests() =>
-        Actor.RecallAll<GuestSessionFixture>().GroupBy(guest => guest.SessionId).Select(group => group.Last());
+    private IEnumerable<GuestSessionFixture> CurrentGuests()
+    {
+        var groupId = Recall<GroupOrderFixture>("primary group").Invitation.GroupReservationId;
+        return Actor.RecallAll<GuestSessionFixture>()
+            .GroupBy(guest => guest.SessionId)
+            .Select(group => group.Last())
+            .Where(guest => guest.GroupReservationId == groupId && !guest.IsRemoved);
+    }
+
+    private decimal GuestSubtotal(GuestSessionFixture guest)
+    {
+        var dishesById = Actor.RecallAll<Restaurant_Aqa_Framework.Api.Dtos.Dishes.DishResponse>()
+            .GroupBy(dish => dish.Id)
+            .ToDictionary(group => group.Key, group => group.Last());
+        var featuredDish = Recall<GroupOrderFixture>("primary group").Dish;
+        var extraTotal = guest.AdditionalDishes?.Sum(item => dishesById[item.Key].Price * item.Value) ?? 0m;
+        return featuredDish.Price * guest.DishQuantity + extraTotal;
+    }
 }

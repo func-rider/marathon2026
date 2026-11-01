@@ -13,19 +13,20 @@ namespace Restaurant_Aqa_Framework.Screenplay.Tasks;
 /// <summary>Creates an Owner, a fresh reservation and invitation, and one available dish for this scenario.
 /// Existing location/table/dish tasks own their own cleanup; the reservation is cancelled after guest sessions
 /// are removed. Cognito users and Owner sessions have no delete endpoint and remain marked with the AQA prefix.</summary>
-public sealed class SetUpGroupPreOrder(bool createReservationAsWaiter = false) : ITask
+public sealed class SetUpGroupPreOrder(
+    string locationName = "group pre-order location",
+    bool createReservationAsWaiter = false,
+    string fixtureName = "primary group") : ITask
 {
-    private const string LocationName = "group pre-order location";
-
     public async Task PerformAsAsync(Actor actor)
     {
         // Fail before creating anything when this clone has no cleanup-capable Waiter account configured.
         var waiter = await actor.AsksForAsync(new TheWaiterSession());
 
         await actor.AttemptsToAsync(
-            new SetUpLocation(name: LocationName),
-            new AddTable(seats: 6, toLocation: LocationName),
-            new AddDish(toLocation: LocationName));
+            new SetUpLocation(name: locationName),
+            new AddTable(seats: 6, toLocation: locationName),
+            new AddDish(toLocation: locationName));
 
         var owner = SampleDataFactory.RegisterRequest();
         var authApi = new AuthApi(actor.UsingTheApi());
@@ -68,7 +69,7 @@ public sealed class SetUpGroupPreOrder(bool createReservationAsWaiter = false) :
             "Opening the group invitation");
         var invitation = actor.TheLastResponse().Json<GroupInviteResponse>();
 
-        actor.Remember(new GroupOrderFixture(
+        actor.Remember(fixtureName, new GroupOrderFixture(
             owner,
             ownerToken,
             reservation,
