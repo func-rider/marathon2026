@@ -11,7 +11,7 @@ public sealed class ReservationCardComponent(ILocator root)
     public ILocator Details => root.Locator(".details-line .details");
     public ILocator CancelButton => root.Locator("button.btn-cancel");
     public ILocator EditButton => root.Locator("button.btn-edit.btn-postpone");
-    public ILocator PreOrderButton => root.Locator("button.btn-preorder");
+    public ILocator PreOrderButton => root.GetByRole(AriaRole.Button, new() { Name = "Pre-order", Exact = true });
     public ILocator LeaveFeedbackButton => root.Locator("button.btn-leave-feedback");
     public ILocator UpdateFeedbackButton => root.Locator("button.btn-update-feedback");
 

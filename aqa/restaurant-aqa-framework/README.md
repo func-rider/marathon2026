@@ -4,6 +4,14 @@ End-to-end tests for the Green & Tasty restaurant application: Reqnroll (Gherkin
 
 Guidance for extending the suite (writing Gherkin, steps, Screenplay, test data, working with an AI assistant) is in [CLAUDE.md](CLAUDE.md).
 
+## Current assignment coverage: Direction 1, Levels 1, 2 and 3
+
+[`Features/GroupPreOrder.feature`](Features/GroupPreOrder.feature) covers Owner review, confirmation, and participant removal. Level 1 `@ui` scenarios check participant cards, dishes, quantities, cart states, subtotals, and the empty-group state; `@api` scenarios check participant totals, cart updates, empty groups, Owner-only access, and missing groups. Level 2 covers Owner UI confirmation, merging repeated submitted dishes, excluding unsubmitted carts, the order and group statuses, the waiter's API and UI view of the final order, and reachable submission errors. Level 3 covers updating the visible participant list and total after removal, removing submitted and last participants, cross-group and nonexistent-session errors, Owner-only deletion, and the full remove-confirm-waiter-view flow with a distinct dish belonging to the removed guest. Waiter UI scenarios create the reservation on behalf of the Owner through the supported reservation flow so that the configured waiter is assigned and can open the order from its reservation card. Group review requires a configured `WAITER_USERNAME` / `WAITER_PASSWORD` to seed and clean up its location, table, and dish.
+
+The UI case where an unsubmitted cart should contribute to the group total is marked `@known-defect`: the current Owner page calculates its displayed total from submitted carts only. The framework deletes remaining guest sessions, cancels the reservation, and removes the seeded location, table, and dishes after each scenario. A guest explicitly removed by a scenario is disarmed from cleanup after the removal succeeds, preventing a duplicate DELETE and false 404 cleanup log. Reservation cancellation closes the group reservation but does not delete its record. The API also has no delete operation for Cognito customer accounts or Owner sessions, so these remaining records use unique `AQA-Sample-` data and cannot currently be removed by the suite.
+
+Level 2 creates an initial order through the supported customer order API only in scenarios that need a successful group submission, then cancels that order during cleanup. The `Order not found` case is covered by submitting a reservation-backed group before creating an order. Two requested failure states cannot be seeded through the public contract: an already-submitted empty cart (the guest submit endpoint rejects an empty cart with `The cart is empty`) and a missing parent reservation (public reservation cancellation retains the reservation and group records). Owner-added items are blocked: the Owner session has no guest-session token hash and the guest dish endpoint requires such a token. The Owner page fetches the Owner session ID but the group-session response omits Owner sessions, so it renders no Owner card or “Edit my Pre-Order” button; the button in the card template is disabled if an Owner card is ever supplied. Since the current page exposes no Owner card, AQA cannot robustly assert the edit affordance as a UI known-defect scenario. Group-not-found is covered because a non-existent group ID can be requested directly. No fabricated routes or authorization bypasses were added.
+
 ## Run the tests
 
 ```bash
@@ -11,6 +19,11 @@ cp .env.example .env        # then fill in your own values (see "Configuration")
 dotnet build
 dotnet run --no-build -- --report-trx                          # everything
 dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=smoke]"   # by tag
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=level-1]" # group pre-order Level 1
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=level-2]" # group pre-order Level 2
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=level-3]" # group pre-order Level 3
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=api]"     # API scenarios
+dotnet run --no-build -- --treenode-filter "/*/*/*/*[Category=ui]"      # UI scenarios
 ```
 
 Everything a run produces lands in `TestResults/`: the TUnit report and TRX, the Reqnroll report in `reqnroll/`, and Playwright traces in `traces/` (open one with `npx playwright show-trace <file>.zip`).

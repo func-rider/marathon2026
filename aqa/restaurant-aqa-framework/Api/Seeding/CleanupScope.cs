@@ -14,22 +14,28 @@ public sealed class CleanupScope(Action<string>? log = null) : IAsyncDisposable
     private readonly List<Func<Task>> _actions = [];
     private readonly Action<string> _log = log ?? (message => Console.Error.WriteLine(message));
 
-    public void TrackDelete(string label, Func<Task<IAPIResponse>> delete) => _actions.Add(async () =>
+    public CleanupRegistration TrackDelete(string label, Func<Task<IAPIResponse>> delete)
     {
-        try
+        Func<Task> cleanup = async () =>
         {
-            var response = await delete();
-            if (!response.Ok)
+            try
             {
-                var error = await response.ReadErrorMessageAsync();
-                _log($"[CleanupScope] Best-effort cleanup of '{label}' returned {response.Status}: {error}");
+                var response = await delete();
+                if (!response.Ok)
+                {
+                    var error = await response.ReadErrorMessageAsync();
+                    _log($"[CleanupScope] Best-effort cleanup of '{label}' returned {response.Status}: {error}");
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            _log($"[CleanupScope] Best-effort cleanup of '{label}' threw: {ex.Message}");
-        }
-    });
+            catch (Exception ex)
+            {
+                _log($"[CleanupScope] Best-effort cleanup of '{label}' threw: {ex.Message}");
+            }
+        };
+
+        _actions.Add(cleanup);
+        return new CleanupRegistration(() => _actions.Remove(cleanup));
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -38,4 +44,12 @@ public sealed class CleanupScope(Action<string>? log = null) : IAsyncDisposable
 
         _actions.Clear();
     }
+}
+
+/// <summary>Lets a successful intentional deletion disarm that record's later cleanup action.</summary>
+public sealed class CleanupRegistration(Action disarm)
+{
+    private Action? _disarm = disarm;
+
+    public void Disarm() => Interlocked.Exchange(ref _disarm, null)?.Invoke();
 }
